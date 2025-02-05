@@ -56,9 +56,8 @@ def poly_sort(points):
     return sorted_points
 
 
-def generate_edges():
+def generate_edges(points):
     """ Generate the edges of the polygon. """
-    global points
     if len(points) >= 3:
         sorted_points = poly_sort(points)
         edges = []
@@ -68,6 +67,21 @@ def generate_edges():
             edges.append((start_point, end_point))
         return edges
     return []
+
+def inset_points(points, scale_factor):
+    """ Insets a list of points. Returns a new list of points"""
+    # First we find center point
+    new_points = []
+    if len(points) >= 3:
+        center = [sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points)]
+        # Find vector between each point to center and scale along it
+        for p in points:
+            dx = (p[0] - center[0]) * scale_factor
+            dy = (p[1] - center[1]) * scale_factor
+            new_points.append((center[0] + dx, center[1] + dy))
+        return new_points
+    return []
+
 
 
 def main():
@@ -97,12 +111,20 @@ def main():
                 points[dragging_point] = event.pos
         
         # Generate edges and draw the polygon
-        edges = generate_edges()
+        edges = generate_edges(points)
         for edge in edges:
+            pygame.draw.line(screen, EDGE_COLOR, edge[0], edge[1], 2)
+
+        inset_points_list = inset_points(points, scale_factor=0.5)
+        inset_edges = generate_edges(inset_points_list)
+        for edge in inset_edges:
             pygame.draw.line(screen, EDGE_COLOR, edge[0], edge[1], 2)
         
         # Draw points
         for p in points:
+            pygame.draw.circle(screen, POINT_COLOR, p, POINT_RADIUS)
+
+        for p in inset_points_list:
             pygame.draw.circle(screen, POINT_COLOR, p, POINT_RADIUS)
         
         pygame.display.flip()
