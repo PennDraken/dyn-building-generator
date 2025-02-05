@@ -10,7 +10,7 @@ WIDTH, HEIGHT = 800, 600
 BG_COLOR = (30, 30, 30)
 POINT_COLOR = (255, 0, 0)
 EDGE_COLOR = (200, 200, 200)
-POINT_RADIUS = 8
+POINT_RADIUS = 16
 
 # Pygame setup
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -69,7 +69,7 @@ def generate_edges(points):
         return edges
     return []
 
-def inset_points(points, edges, inset_amount):
+def inset_edges(points, edges, inset_amount):
     """ Insets a list of points. Returns a new list of points"""
     # First we find center point
     if len(points)>=3:
@@ -120,12 +120,17 @@ def main():
         for edge in edges:
             pygame.draw.line(screen, EDGE_COLOR, edge[0], edge[1], 2)
 
-        inset_points_list = inset_points(points, edges, inset_amount=50)
-        for points_part in inset_points_list:
-            inset_edges = generate_edges(points_part)
-            for edge in inset_edges:
-                pygame.draw.line(screen, EDGE_COLOR, edge[0], edge[1], 2)
+        # inset_points_list = inset_edges(points, edges, inset_amount=50)
+        # for points_part in inset_points_list:
+        #     inset_edges = generate_edges(points_part)
+        #     for edge in inset_edges:
+        #         pygame.draw.line(screen, EDGE_COLOR, edge[0], edge[1], 2)
         
+        inset_points_list = inset_edges(points, edges, inset_amount=50)
+        for points_list in inset_points_list:
+            for i in range(0, len(points_list)-1):
+                pygame.draw.line(screen, EDGE_COLOR, points_list[i], points_list[i+1], 2)
+
         # Draw points
         for p in points:
             pygame.draw.circle(screen, POINT_COLOR, p, POINT_RADIUS)
