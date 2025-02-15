@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Interactive Polygon Editor</title>
+		<style>
+			body {
+				margin: 0;
+				display: flex;
+				flex-direction: row;
+				height: 100vh;
+			}
+			#left, #right {
+				width: 50%;
+				height: 100%;
+				overflow: hidden;
+				position: relative;
+			}
+			canvas {
+				display: block;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="left"></div>
+		<div id="right"></div>
+		<script type="module" src="/main.js"></script>
+	</body>
+</html>
