@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 import * as turf from '@turf/turf';
+import { deflate } from 'three/examples/jsm/libs/fflate.module.js';
+
+// Colors
+const wallColor = 0xDAC6C6;
+const bluePrintColor = 0xDAC6C6;
+const groundColor = 0x4D6C50;
+const pointsColor = 0xE1E1E1;
 
 // Select containers for left and right sides
 const leftContainer = document.getElementById('left');
@@ -23,7 +30,7 @@ rightCamera.lookAt(0, 0, 0);
 // Ground plane
 const planeGeometry = new THREE.PlaneGeometry(100, 100);
 const planeMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,  // White color
+    color: groundColor,  // White color
     side: THREE.DoubleSide,  // Make the plane visible from both sides
     opacity: 0.5,  // Optional: Adjust transparency if needed
     transparent: true
@@ -38,13 +45,30 @@ rightRenderer.setSize(rightContainer.offsetWidth, rightContainer.offsetHeight);
 rightContainer.appendChild(rightRenderer.domElement);
 
 // Add a directional light to the rightScene
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1); // Adjust intensity to a more moderate value
+const directionalLight = new THREE.DirectionalLight(0xffffff, 3); // Adjust intensity to a more moderate value
 directionalLight.position.set(1, 1, 1); // Position of the light in the 3D space
 rightScene.add(directionalLight);
 
 // Optional: Add ambient light for softer lighting (providing basic light throughout the scene)
 const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // Soft white light with moderate intensity
 rightScene.add(ambientLight);
+
+// Get references to the slider and value display
+const slider = document.getElementById("deflationFactorSlider");
+const sliderValueDisplay = document.getElementById("deflationFactorValue");
+
+// Add an event listener to the slider to update the value
+slider.addEventListener("input", () => {
+    const deflationFactor = parseFloat(slider.value);
+    sliderValueDisplay.textContent = deflationFactor.toFixed(2); // Update displayed value
+    update3DProjection(deflationFactor); // Pass the value to your function
+});
+
+let deflationFactor = 40;
+window.onload = () => {
+    const initialDeflationFactor = parseFloat(slider.value);
+    deflationFactor = initialDeflationFactor;
+};
 
 
 // Adjust camera and renderer on window resize
@@ -77,10 +101,10 @@ let hoveredPoint = null;
 let projectedPolygon = null;
 
 // Material for points and lines
-const pointMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+const pointMaterial = new THREE.MeshBasicMaterial({ color: pointsColor });
 const lineMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff });
 const polygonMaterial = new THREE.MeshBasicMaterial({
-    color: 0x00ff00,
+    color: bluePrintColor,
     side: THREE.DoubleSide,
     wireframe: false,
 });
@@ -106,7 +130,7 @@ function updatePolygon() {
         leftScene.add(polygon);
     }
 
-    update3DProjection();
+    update3DProjection(parseFloat(slider.value));
 }
 let previousInnerMeshes = [];
 
@@ -138,7 +162,7 @@ function genInnerShapes(points, deflationFactor) {
 }
 
 // Function to update the 3D projection on the right part of the scene
-function update3DProjection() {
+function update3DProjection(deflationFactor) {
     if (projectedPolygon) {
         rightScene.remove(projectedPolygon);
     }
@@ -160,7 +184,7 @@ function update3DProjection() {
         centroidY /= points.length;
 
         // Step 2: Define a deflation factor (e.g., 0.5 means 50% shrinkage)
-        const deflationFactor = 50;
+        // const deflationFactor = 50;
 
         // Step 3: Create the outer shape (the bigger polygon)
         const outerShape = new THREE.Shape();
@@ -187,7 +211,7 @@ function update3DProjection() {
 
         // Step 8: Material for the outer 3D object
         const outerMaterial = new THREE.MeshPhongMaterial({
-            color: 0xff0000, // Red color for the outer shape
+            color: wallColor, // Red color for the outer shape
             side: THREE.DoubleSide, // Make sure both sides are visible
         });
 
@@ -295,6 +319,8 @@ function onMouseMove(event) {
         }
     }
 }
+
+
 
 function onMouseUp() {
     selectedPoint = null;
