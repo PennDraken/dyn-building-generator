@@ -1,3 +1,5 @@
+// to start server:
+// npx vite 
 import * as THREE from 'three';
 import * as turf from '@turf/turf';
 import { deflate } from 'three/examples/jsm/libs/fflate.module.js';
@@ -7,6 +9,7 @@ const wallColor = 0xDAC6C6;
 const bluePrintColor = 0xDAC6C6;
 const groundColor = 0x4D6C50;
 const pointsColor = 0xE1E1E1;
+const roofColor = 0xcc3300;
 
 // Select containers for left and right sides
 const leftContainer = document.getElementById('left');
@@ -133,8 +136,8 @@ function updatePolygon() {
     update3DProjection(parseFloat(slider.value));
 }
 let previousInnerMeshes = [];
-
-function genInnerShapes(points, deflationFactor) {
+let previousRoofMesh = null;
+function genCourtyardShapes(points, deflationFactor) {
     // Step 1: Convert the points into a Turf.js polygon
     const coordinates = points.map(p => [p.x, p.y]);
     const polygon = turf.polygon([[...coordinates, coordinates[0]]]);
@@ -161,16 +164,61 @@ function genInnerShapes(points, deflationFactor) {
     return innerShapes; // Return an array of inner shapes
 }
 
+// Generates a skeleton for the roof
+
+
+function genRoofMesh(buildingShape) {
+    // Ensure the input is a valid THREE.Shape
+    if (!(buildingShape instanceof THREE.Shape)) {
+        throw new Error("Invalid building shape: Must be an instance of THREE.Shape.");
+    }
+
+    // Generate the geometry for the roof using shape geometry
+    const shapeGeometry = new THREE.ShapeGeometry(buildingShape);
+
+    // Extract vertices (no z-coordinate change, keep it flat)
+    const positionAttribute = shapeGeometry.getAttribute("position");
+    const roofVertices = [];
+    for (let i = 0; i < positionAttribute.count; i++) {
+        const x = positionAttribute.getX(i);
+        const y = positionAttribute.getY(i);
+        // No need to modify the z-coordinate, keep it at 0
+        roofVertices.push(x, y, 0); // z = 0 for 2D
+    }
+
+    // Use the same indices for the shape geometry
+    const indices = shapeGeometry.index.array;
+
+    // Build the BufferGeometry for the 2D roof
+    const roofGeometry = new THREE.BufferGeometry();
+    roofGeometry.setAttribute("position", new THREE.Float32BufferAttribute(roofVertices, 3));
+    roofGeometry.setIndex(indices);
+    roofGeometry.computeVertexNormals();
+
+    // Create a material and the roof mesh
+    const material = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide });
+    const roofMesh = new THREE.Mesh(roofGeometry, material);
+
+    return roofMesh;
+}
+
 // Function to update the 3D projection on the right part of the scene
 function update3DProjection(deflationFactor) {
     if (projectedPolygon) {
         rightScene.remove(projectedPolygon);
     }
 
+    if (previousRoofMesh) {
+        rightScene.remove(previousRoofMesh);
+    }
+
+
     if (previousInnerMeshes) {
         // Remove all previous inner meshes
         previousInnerMeshes.forEach(mesh => rightScene.remove(mesh));
     }
+
+
 
     if (points.length > 2) {
         // Step 1: Calculate the centroid of the polygon
@@ -193,12 +241,15 @@ function update3DProjection(deflationFactor) {
         outerShape.lineTo(points[0].x, points[0].y); // Close the loop
 
         // Step 4: Generate the inner shapes using the updated genInnerShapes function
-        const innerShapes = genInnerShapes(points, deflationFactor);
+        const innerShapes = genCourtyardShapes(points, deflationFactor);
 
         // Step 5: Add each inner shape as a hole in the outer shape
         innerShapes.forEach((innerShape) => {
             outerShape.holes.push(innerShape);
         });
+
+        // Create roof
+        const roofMesh = genRoofMesh(outerShape);
 
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
@@ -237,7 +288,8 @@ function update3DProjection(deflationFactor) {
         // Step 11: Add the outer mesh and all inner meshes to the scene
         rightScene.add(projectedPolygon);
         // innerMeshes.forEach(mesh => rightScene.add(mesh));
-
+        // previousRoofMesh = roofMesh;
+        // rightScene.add(roofMesh);
         // Step 12: Store the inner meshes for removal in the next update
         // previousInnerMeshes = innerMeshes;
     }
@@ -283,6 +335,11 @@ function onMouseDown(event) {
     }
 }
 
+function resetPointSizes() {
+    pointMeshes.forEach(mesh => {
+        mesh.scale.set(1, 1, 1); // Reset to default size
+    });
+}
 function onMouseMove(event) {
     const { offsetX, offsetY } = event;
     const mouse = new THREE.Vector2(
@@ -303,7 +360,8 @@ function onMouseMove(event) {
         const intersectedPoint = intersects[0].object;
         if (hoveredPoint !== intersectedPoint) {
             resetPointSizes();
-            intersectedPoint.scale.set(1.5, 1.5, 1.5);
+            let r = 2
+            intersectedPoint.scale.set(r, r, r);
             hoveredPoint = intersectedPoint;
         }
     }
