@@ -108,36 +108,44 @@ function updatePolygon() {
 
     update3DProjection();
 }
-let previousInnerMesh = null;
-// Function to update the 3D projection on the right part of the scene
-function genInnerShape(points, deflationFactor) {
+let previousInnerMeshes = [];
+
+function genInnerShapes(points, deflationFactor) {
     // Step 1: Convert the points into a Turf.js polygon
     const coordinates = points.map(p => [p.x, p.y]);
     const polygon = turf.polygon([[...coordinates, coordinates[0]]]);
 
     // Step 2: Use Turf.js to create a buffer around the polygon
     // Negative value for deflation (shrink the polygon)
-    const offsetPolygon = turf.buffer(polygon, -100);
+    const offsetPolygon = turf.buffer(polygon, -deflationFactor);
 
-    // Step 3: Extract the coordinates of the offset polygon
-    const offsetCoordinates = offsetPolygon.geometry.coordinates[0];
+    // Step 3: Handle multiple inner shapes (MultiPolygon)
+    const geometries = offsetPolygon.geometry.type === 'MultiPolygon' 
+        ? offsetPolygon.geometry.coordinates 
+        : [offsetPolygon.geometry.coordinates];
 
-    // Step 4: Create the inner shape (the smaller polygon)
-    const innerShape = new THREE.Shape();
-    innerShape.moveTo(offsetCoordinates[0][0], offsetCoordinates[0][1]);
-    offsetCoordinates.forEach((coord) => innerShape.lineTo(coord[0], coord[1]));
-    innerShape.lineTo(offsetCoordinates[0][0], offsetCoordinates[0][1]); // Close the loop
+    // Step 4: Convert each inner polygon into a THREE.Shape
+    const innerShapes = geometries.map((coords) => {
+        const innerShape = new THREE.Shape();
+        const [outerRing] = coords; // Use the first ring (outer boundary) of each polygon
+        innerShape.moveTo(outerRing[0][0], outerRing[0][1]);
+        outerRing.forEach((coord) => innerShape.lineTo(coord[0], coord[1]));
+        innerShape.lineTo(outerRing[0][0], outerRing[0][1]); // Close the loop
+        return innerShape;
+    });
 
-    return innerShape;
+    return innerShapes; // Return an array of inner shapes
 }
 
+// Function to update the 3D projection on the right part of the scene
 function update3DProjection() {
     if (projectedPolygon) {
         rightScene.remove(projectedPolygon);
     }
 
-    if (previousInnerMesh) {
-        rightScene.remove(previousInnerMesh);  // Remove the previous inner mesh
+    if (previousInnerMeshes) {
+        // Remove all previous inner meshes
+        previousInnerMeshes.forEach(mesh => rightScene.remove(mesh));
     }
 
     if (points.length > 2) {
@@ -152,7 +160,7 @@ function update3DProjection() {
         centroidY /= points.length;
 
         // Step 2: Define a deflation factor (e.g., 0.5 means 50% shrinkage)
-        const deflationFactor = 0.5;
+        const deflationFactor = 50;
 
         // Step 3: Create the outer shape (the bigger polygon)
         const outerShape = new THREE.Shape();
@@ -160,11 +168,13 @@ function update3DProjection() {
         points.forEach((p) => outerShape.lineTo(p.x, p.y));
         outerShape.lineTo(points[0].x, points[0].y); // Close the loop
 
-        // Step 4: Generate the inner shape using the genInnerShape function
-        const innerShape = genInnerShape(points, deflationFactor);
+        // Step 4: Generate the inner shapes using the updated genInnerShapes function
+        const innerShapes = genInnerShapes(points, deflationFactor);
 
-        // Step 5: Add the inner shape as a hole in the outer shape
-        outerShape.holes.push(innerShape);
+        // Step 5: Add each inner shape as a hole in the outer shape
+        innerShapes.forEach((innerShape) => {
+            outerShape.holes.push(innerShape);
+        });
 
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
@@ -185,23 +195,27 @@ function update3DProjection() {
         projectedPolygon = new THREE.Mesh(extrudeGeometry, outerMaterial);
         projectedPolygon.rotation.x = -Math.PI / 2;
 
-        // Step 10: Extrude the inner shape to 3D
-        const innerExtrudeGeometry = new THREE.ExtrudeGeometry(innerShape, extrudeSettings);
+        // Step 10: Extrude each inner shape to 3D and store them
+        const innerMeshes = [];
         const innerMaterial = new THREE.MeshPhongMaterial({
-            color: 0x00ff00, // Green color for the inner shape
+            color: 0x00ff00, // Green color for the inner shapes
             side: THREE.DoubleSide, // Make sure both sides are visible
         });
 
-        // Step 11: Create the inner mesh (extruded)
-        const innerMesh = new THREE.Mesh(innerExtrudeGeometry, innerMaterial);
-        innerMesh.rotation.x = -Math.PI / 2;
-        innerMesh.position.y = 2;
+        innerShapes.forEach((innerShape) => {
+            const innerExtrudeGeometry = new THREE.ExtrudeGeometry(innerShape, extrudeSettings);
+            const innerMesh = new THREE.Mesh(innerExtrudeGeometry, innerMaterial);
+            innerMesh.rotation.x = -Math.PI / 2;
+            innerMesh.position.y = 2; // Offset the inner meshes slightly to avoid z-fighting
+            innerMeshes.push(innerMesh);
+        });
 
-        // Step 12: Add both meshes to the scene
+        // Step 11: Add the outer mesh and all inner meshes to the scene
         rightScene.add(projectedPolygon);
-        // rightScene.add(innerMesh);
+        // innerMeshes.forEach(mesh => rightScene.add(mesh));
 
-        // previousInnerMesh = innerMesh;
+        // Step 12: Store the inner meshes for removal in the next update
+        // previousInnerMeshes = innerMeshes;
     }
 }
 // Mouse events and rendering loop (same as your code)
