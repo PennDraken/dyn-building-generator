@@ -2,6 +2,7 @@
 // npx vite 
 import * as THREE from 'three';
 import * as turf from '@turf/turf';
+import earcut from "earcut"; // Used for triangulation of skeletonisation
 import { deflate } from 'three/examples/jsm/libs/fflate.module.js';
 import {SkeletonBuilder} from 'straight-skeleton';
 SkeletonBuilder.init();
@@ -170,42 +171,73 @@ function genCourtyardShapes(points, deflationFactor) {
     return innerShapes; // Return an array of inner shapes
 }
 
-// Generates a skeleton for the roof
-function skeletonizeShape(buildingShape, elevation) {
-    // Ensure the input is a valid THREE.Shape
-    if (!(buildingShape instanceof THREE.Shape)) {
-        throw new Error("Invalid building shape: Must be an instance of THREE.Shape.");
-    }
+function skeletonizeShape(outerShapes, innerShapes, elevation) {
+    // Transformation to 3.js based on https://github.com/StrandedKitty/straight-skeleton/blob/main/src/example/index.ts
+    const polygon = [
+        [
+            [-1, -1],
+            [0, -12],
+            [1, -1],
+            [12, 0],
+            [1, 1],
+            [0, 12],
+            [-1, 1],
+            [-12, 0],
+            [-1, -1]
+        ], [
+            [-1, 0],
+            [0, 1],
+            [1, 0],
+            [0, -1],
+            [-1, 0]
+        ]
+    ];
 
-    // Convert the THREE.Shape into a polygon format required by the library
-    const polygon = [buildingShape.getPoints().map((point) => [point.x, point.y])];
-
-    // Generate the straight skeleton
+    // Generate the skeleton mesh using the polygon
     const result = SkeletonBuilder.buildFromPolygon(polygon);
+    // console.log(result);
+    // Extract vertices and polygons from the result object
+    const geometry = new THREE.BufferGeometry();
+    const vertices = [];
+    const scale = 1;
 
-    // Check if the skeleton was successfully constructed
-    if (!result) {
-        throw new Error("Failed to construct the straight skeleton for the given shape.");
+    for (const polygon of result.polygons) {
+        const polygonVertices = [];
+
+        for (let i = 0; i < polygon.length; i++) {
+            const vertex = result.vertices[polygon[i]];
+            polygonVertices.push(
+                (vertex[0]) * scale,
+                (vertex[1]) * scale,
+                (vertex[2]) * scale
+            );
+        }
+
+        const triangles = earcut(polygonVertices, null, 3);
+
+        for (let i = 0; i < triangles.length / 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                const index = triangles[i * 3 + j];
+
+                vertices.push(polygonVertices[index * 3], polygonVertices[index * 3 + 1], polygonVertices[index * 3 + 2]);
+            }
+        }
     }
 
-    // Extract skeleton vertices
-    const skeletonPoints = result.vertices.map((vertex) => new THREE.Vector3(vertex[0], vertex[1], 0));
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
 
-    // Create a geometry to visualize the skeleton
-    const skeletonGeometry = new THREE.BufferGeometry().setFromPoints(skeletonPoints);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x00ff00,   // Green color for the mesh
+        wireframe: false    // Wireframe mode to visualize the polygons clearly
+    });
+    const skeletonMesh = new THREE.Mesh(geometry, material);
 
-    // Create a line material for the skeleton
-    const skeletonMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 }); // Green color
-
-    // Create the skeleton mesh as a Line
-    const skeletonMesh = new THREE.Line(skeletonGeometry, skeletonMaterial);
-
-    // Elevate the skeleton by the specified amount
-    skeletonMesh.position.y = elevation;
+    skeletonMesh.position.y = 2*elevation;
     skeletonMesh.rotation.x = -Math.PI / 2;
-
     return skeletonMesh;
 }
+
+
 function genRoofMesh(buildingShape, elevation, roofColor) {
     // Ensure the input is a valid THREE.Shape
     if (!(buildingShape instanceof THREE.Shape)) {
@@ -216,7 +248,7 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
     const shapeGeometry = new THREE.ShapeGeometry(buildingShape);
 
     // Create a material for the roof
-    const material = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide });
+    const material = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide, wireframe: true });
 
     // Create the roof mesh
     const roofMesh = new THREE.Mesh(shapeGeometry, material);
@@ -233,6 +265,8 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
 
 // Function to update the 3D projection on the right part of the scene
 function update3DProjection(deflationFactor) {
+    let extrudeAmount = 2;
+
     if (projectedPolygon) {
         rightScene.remove(projectedPolygon);
     }
@@ -249,7 +283,7 @@ function update3DProjection(deflationFactor) {
     if (previosRoofSkeleton) {
         rightScene.remove(previosRoofSkeleton);
     }
-
+    
     if (points.length > 2) {
         // Step 1: Calculate the centroid of the polygon
         let centroidX = 0;
@@ -261,9 +295,6 @@ function update3DProjection(deflationFactor) {
         centroidX /= points.length;
         centroidY /= points.length;
 
-        // Step 2: Define a deflation factor (e.g., 0.5 means 50% shrinkage)
-        // const deflationFactor = 50;
-
         // Step 3: Create the outer shape (the bigger polygon)
         const outerShape = new THREE.Shape();
         outerShape.moveTo(points[0].x, points[0].y);
@@ -272,6 +303,7 @@ function update3DProjection(deflationFactor) {
 
         // Step 4: Generate the inner shapes using the updated genInnerShapes function
         const innerShapes = genCourtyardShapes(points, deflationFactor);
+        previosRoofSkeleton = skeletonizeShape(outerShape, innerShapes, extrudeAmount + 0.5);
 
         // Step 5: Add each inner shape as a hole in the outer shape
         innerShapes.forEach((innerShape) => {
@@ -279,9 +311,7 @@ function update3DProjection(deflationFactor) {
         });
 
         // Create roof
-        let extrudeAmount = 2;
         const roofMesh = genRoofMesh(outerShape, extrudeAmount + 0.1, roofColor);
-        previosRoofSkeleton = skeletonizeShape(outerShape, extrudeAmount + 0.5);
         
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
