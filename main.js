@@ -126,21 +126,58 @@ function createPoint(x, y) {
     return point;
 }
 
-// Function to update the 2D polygon on the left
+function polySort(points) {
+    // Step 1: Calculate the center of mass (centroid)
+    const center = points.reduce((acc, p) => {
+        acc.x += p.x;
+        acc.y += p.y;
+        return acc;
+    }, { x: 0, y: 0 });
+    
+    center.x /= points.length;
+    center.y /= points.length;
+
+    // Step 2: Convert points to polar coordinates (angle, distance)
+    const annotatedPoints = points.map(p => {
+        const dx = p.x - center.x;
+        const dy = p.y - center.y;
+        const angle = Math.atan2(dy, dx);  // Polar angle (radians)
+        const distanceSquared = dx * dx + dy * dy;  // Squared distance
+        return { ...p, angle, distanceSquared };
+    });
+
+    // Step 3: Sort points by angle and then by distance
+    annotatedPoints.sort((a, b) => {
+        if (a.angle !== b.angle) {
+            return a.angle - b.angle;
+        }
+        return a.distanceSquared - b.distanceSquared;
+    });
+
+    // Step 4: Return the sorted points
+    return annotatedPoints.map(p => ({ x: p.x, y: p.y }));
+}
+
 function updatePolygon() {
     if (polygon) {
         leftScene.remove(polygon);
     }
 
     if (points.length > 2) {
-        const shape = new THREE.Shape(points.map(p => new THREE.Vector2(p.x, p.y)));
+        // Sort the points in counter-clockwise order to avoid overlap
+        const sortedPoints = polySort(points);
+
+        // Create the shape from the sorted points
+        const shape = new THREE.Shape(sortedPoints.map(p => new THREE.Vector2(p.x, p.y)));
         const geometry = new THREE.ShapeGeometry(shape);
         polygon = new THREE.Mesh(geometry, polygonMaterial);
         leftScene.add(polygon);
+        points = sortedPoints;
     }
 
     update3DProjection(parseFloat(slider.value));
 }
+
 let previousInnerMeshes = [];
 let previousRoofMesh = null;
 let previosRoofSkeleton = null;
@@ -507,6 +544,9 @@ function onMouseMove3d(event) {
         horisontalAngle += dx / 100;
         verticalAngle   += dy / 100;
     }
+    verticalAngle = Math.min(Math.PI / 2, verticalAngle);
+    verticalAngle = Math.max(0.01, verticalAngle);
+
     oldMouseX = event.x;
     oldMouseY = event.y;
 }
@@ -538,7 +578,7 @@ rightContainer.addEventListener('wheel', onMouseScroll3d);
 
 let cameraRadius = 10;
 let horisontalAngle = 0; // Initial angle
-let verticalAngle   = 40;
+let verticalAngle   = 0.1;
 
 function animate() {
     // Update the camera position to rotate around the origin
@@ -552,8 +592,6 @@ function animate() {
     rightCamera.position.x = cameraRadius * Math.cos(horisontalAngle) * Math.cos(verticalAngle);
     rightCamera.position.y = cameraRadius * Math.sin(verticalAngle);
     rightCamera.position.z = cameraRadius * Math.sin(horisontalAngle) * Math.cos(verticalAngle);
-    verticalAngle = Math.min(0.9*Math.PI, verticalAngle)
-    verticalAngle = Math.max(0, verticalAngle)
     rightCamera.lookAt(0, 0, 0);
 
 
