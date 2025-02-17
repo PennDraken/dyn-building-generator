@@ -220,15 +220,14 @@ function shapeToPolygon(shape) {
 
 
 
-function skeletonizeShape(shape, elevation) {
-    const roofScale = 2;
+function skeletonizeShape(shape, elevation, roofHeight) {
+    // const roofScale = 2;
     const polygon = shapeToPolygon(shape);
     // Generate the skeleton mesh using the polygon
     const result = SkeletonBuilder.buildFromPolygon(polygon);
 
     const geometry = new THREE.BufferGeometry();
     const vertices = [];
-
     for (const polygon of result.polygons) {
         const polygonVertices = [];
 
@@ -265,6 +264,16 @@ function skeletonizeShape(shape, elevation) {
     });
 
     const skeletonMesh = new THREE.Mesh(geometry, material);
+
+
+    // lets scale the roof so its a fixed height
+    // First we find the original height by finding min and max y of the vertices
+    const yValues = vertices.filter((_, index) => index % 3 === 2);
+    const minY = Math.min(...yValues);
+    const maxY = Math.max(...yValues);
+    const currHeight = (maxY - minY);
+    const roofScale = roofHeight/currHeight;
+    console.log(currHeight);
 
     skeletonMesh.scale.z = roofScale;
     skeletonMesh.position.y = elevation;
@@ -347,7 +356,7 @@ function update3DProjection(deflationFactor) {
 
         // Create roof
         const roofMesh = genRoofMesh(outerShape, extrudeAmount, roofColor);
-        previosRoofSkeleton = skeletonizeShape(outerShape, extrudeAmount + 0.01);
+        previosRoofSkeleton = skeletonizeShape(outerShape, extrudeAmount + 0.01, 0.5);
 
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
