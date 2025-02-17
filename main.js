@@ -403,9 +403,8 @@ function update3DProjection(deflationFactor) {
         // previousInnerMeshes = innerMeshes;
     }
 }
-// Mouse events and rendering loop (same as your code)
 
-// Mouse event handlers for left scene (same as your existing code)
+// Mouse event handlers for left scene
 let selectedPoint = null;
 
 function onMouseDown(event) {
@@ -487,6 +486,39 @@ function onMouseMove(event) {
     }
 }
 
+let mouseHeld = false;
+let oldMouseX = null;
+let oldMouseY = null;
+function onMouseDown3d(event) {
+    mouseHeld = true;
+}
+
+function onMouseMove3d(event) {
+    // Function to rotate camera
+    if (mouseHeld) {
+        const dx = event.x - oldMouseX;
+        const dy = event.y - oldMouseY;
+        horisontalAngle += dx / 100;
+        verticalAngle   += dy / 100;
+    }
+    rightCamera.position.x = cameraRadius * Math.cos(horisontalAngle);
+    rightCamera.position.z = cameraRadius * Math.sin(horisontalAngle);
+    rightCamera.position.y = cameraRadius * Math.sin(verticalAngle);
+    rightCamera.lookAt(0, 0, 0);
+
+    oldMouseX = event.x;
+    oldMouseY = event.y;
+}
+
+function onMouseUp3d(event) {
+    mouseHeld = false;
+}
+
+function onMouseScroll3d(event) {
+    event.preventDefault();
+    cameraRadius += event.deltaY / 100;
+    onMouseMove3d();
+}
 
 
 function onMouseUp() {
@@ -498,21 +530,24 @@ leftContainer.addEventListener('mousemove', onMouseMove);
 leftContainer.addEventListener('mouseup', onMouseUp);
 leftContainer.addEventListener('contextmenu', event => event.preventDefault());
 
-// Render loop
-let angle = 0; // Initial angle
+rightContainer.addEventListener('mousedown', onMouseDown3d);
+rightContainer.addEventListener('mousemove', onMouseMove3d);
+rightContainer.addEventListener('mouseup', onMouseUp3d);
+rightContainer.addEventListener('wheel', onMouseScroll3d);
+
+let cameraRadius = 10;
+let horisontalAngle = 0; // Initial angle
+let verticalAngle   = 0;
 
 function animate() {
     // Update the camera position to rotate around the origin
-    angle += 0.001; // Adjust the speed of the rotation
-    const radius = 10; // Radius of the orbit
-    const cameraHeight = 5; // Height of the camera from the origin
-
-    rightCamera.position.x = radius * Math.cos(angle);
-    rightCamera.position.z = radius * Math.sin(angle);
-    rightCamera.position.y = cameraHeight; // Keep the height fixed
+    // angle += 0.001; // Adjust the speed of the rotation
+    // rightCamera.position.x = radius * Math.cos(angle);
+    // rightCamera.position.z = radius * Math.sin(angle);
+    // rightCamera.position.y = cameraHeight; // Keep the height fixed
 
     // Make the cameras look at the center (0, 0, 0)
-    rightCamera.lookAt(0, 0, 0);
+    // rightCamera.lookAt(0, 0, 0);
 
     // Render the scenes
     leftRenderer.render(leftScene, leftCamera);
