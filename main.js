@@ -3,6 +3,11 @@
 import * as THREE from 'three';
 import * as turf from '@turf/turf';
 import { deflate } from 'three/examples/jsm/libs/fflate.module.js';
+import {SkeletonBuilder} from 'straight-skeleton';
+SkeletonBuilder.init();
+SkeletonBuilder.init().catch((error) => {
+    console.error("Failed to initialize SkeletonBuilder:", error);
+});
 
 // Colors
 const wallColor = 0xDAC6C6;
@@ -137,6 +142,7 @@ function updatePolygon() {
 }
 let previousInnerMeshes = [];
 let previousRoofMesh = null;
+let previosRoofSkeleton = null;
 function genCourtyardShapes(points, deflationFactor) {
     // Step 1: Convert the points into a Turf.js polygon
     const coordinates = points.map(p => [p.x, p.y]);
@@ -165,9 +171,42 @@ function genCourtyardShapes(points, deflationFactor) {
 }
 
 // Generates a skeleton for the roof
+function skeletonizeShape(buildingShape, elevation) {
+    // Ensure the input is a valid THREE.Shape
+    if (!(buildingShape instanceof THREE.Shape)) {
+        throw new Error("Invalid building shape: Must be an instance of THREE.Shape.");
+    }
 
+    // Convert the THREE.Shape into a polygon format required by the library
+    const polygon = [buildingShape.getPoints().map((point) => [point.x, point.y])];
 
-function genRoofMesh(buildingShape) {
+    // Generate the straight skeleton
+    const result = SkeletonBuilder.buildFromPolygon(polygon);
+
+    // Check if the skeleton was successfully constructed
+    if (!result) {
+        throw new Error("Failed to construct the straight skeleton for the given shape.");
+    }
+
+    // Extract skeleton vertices
+    const skeletonPoints = result.vertices.map((vertex) => new THREE.Vector3(vertex[0], vertex[1], 0));
+
+    // Create a geometry to visualize the skeleton
+    const skeletonGeometry = new THREE.BufferGeometry().setFromPoints(skeletonPoints);
+
+    // Create a line material for the skeleton
+    const skeletonMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 }); // Green color
+
+    // Create the skeleton mesh as a Line
+    const skeletonMesh = new THREE.Line(skeletonGeometry, skeletonMaterial);
+
+    // Elevate the skeleton by the specified amount
+    skeletonMesh.position.y = elevation;
+    skeletonMesh.rotation.x = -Math.PI / 2;
+
+    return skeletonMesh;
+}
+function genRoofMesh(buildingShape, elevation, roofColor) {
     // Ensure the input is a valid THREE.Shape
     if (!(buildingShape instanceof THREE.Shape)) {
         throw new Error("Invalid building shape: Must be an instance of THREE.Shape.");
@@ -176,29 +215,19 @@ function genRoofMesh(buildingShape) {
     // Generate the geometry for the roof using shape geometry
     const shapeGeometry = new THREE.ShapeGeometry(buildingShape);
 
-    // Extract vertices (no z-coordinate change, keep it flat)
-    const positionAttribute = shapeGeometry.getAttribute("position");
-    const roofVertices = [];
-    for (let i = 0; i < positionAttribute.count; i++) {
-        const x = positionAttribute.getX(i);
-        const y = positionAttribute.getY(i);
-        // No need to modify the z-coordinate, keep it at 0
-        roofVertices.push(x, y, 0); // z = 0 for 2D
-    }
-
-    // Use the same indices for the shape geometry
-    const indices = shapeGeometry.index.array;
-
-    // Build the BufferGeometry for the 2D roof
-    const roofGeometry = new THREE.BufferGeometry();
-    roofGeometry.setAttribute("position", new THREE.Float32BufferAttribute(roofVertices, 3));
-    roofGeometry.setIndex(indices);
-    roofGeometry.computeVertexNormals();
-
-    // Create a material and the roof mesh
+    // Create a material for the roof
     const material = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide });
-    const roofMesh = new THREE.Mesh(roofGeometry, material);
 
+    // Create the roof mesh
+    const roofMesh = new THREE.Mesh(shapeGeometry, material);
+
+    // Compute the bounding box of the building shape to determine its height
+    const boundingBox = new THREE.Box3().setFromObject(roofMesh);
+    const buildingHeight = boundingBox.max.z - boundingBox.min.z;
+
+    // Elevate the roof by the specified amount above the building height
+    roofMesh.position.y = buildingHeight + elevation;
+    roofMesh.rotation.x = -Math.PI / 2;
     return roofMesh;
 }
 
@@ -212,13 +241,14 @@ function update3DProjection(deflationFactor) {
         rightScene.remove(previousRoofMesh);
     }
 
-
     if (previousInnerMeshes) {
         // Remove all previous inner meshes
         previousInnerMeshes.forEach(mesh => rightScene.remove(mesh));
     }
 
-
+    if (previosRoofSkeleton) {
+        rightScene.remove(previosRoofSkeleton);
+    }
 
     if (points.length > 2) {
         // Step 1: Calculate the centroid of the polygon
@@ -249,11 +279,13 @@ function update3DProjection(deflationFactor) {
         });
 
         // Create roof
-        const roofMesh = genRoofMesh(outerShape);
-
+        let extrudeAmount = 2;
+        const roofMesh = genRoofMesh(outerShape, extrudeAmount + 0.1, roofColor);
+        previosRoofSkeleton = skeletonizeShape(outerShape, extrudeAmount + 0.5);
+        
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
-            depth: 2, // Thickness of the extrusion
+            depth: extrudeAmount, // Thickness of the extrusion
             bevelEnabled: false, // Disable beveling
         };
 
@@ -288,8 +320,10 @@ function update3DProjection(deflationFactor) {
         // Step 11: Add the outer mesh and all inner meshes to the scene
         rightScene.add(projectedPolygon);
         // innerMeshes.forEach(mesh => rightScene.add(mesh));
-        // previousRoofMesh = roofMesh;
-        // rightScene.add(roofMesh);
+        previousRoofMesh = roofMesh;
+        rightScene.add(roofMesh);
+        rightScene.add(previosRoofSkeleton);
+
         // Step 12: Store the inner meshes for removal in the next update
         // previousInnerMeshes = innerMeshes;
     }
@@ -393,7 +427,7 @@ leftContainer.addEventListener('contextmenu', event => event.preventDefault());
 function animate() {
     // Rotate the projected polygon around the Z-axis
     if (projectedPolygon) {
-        projectedPolygon.rotation.z += 0.01; // Adjust the value to control the speed of rotation
+        // projectedPolygon.rotation.z += 0.01; // Adjust the value to control the speed of rotation
     }
 
     // Render the scenes

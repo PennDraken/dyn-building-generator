@@ -3,6 +3,7 @@
     "@flatten-js/core": "^1.6.2",
     "@flatten-js/polygon-offset": "^1.1.4",
     "@turf/turf": "^7.2.0",
+    "straight-skeleton": "^2.0.1",
     "three": "^0.173.0"
   },
   "devDependencies": {
