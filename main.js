@@ -55,7 +55,7 @@ rightContainer.appendChild(rightRenderer.domElement);
 
 // Add a directional light to the rightScene
 const directionalLight = new THREE.DirectionalLight(0xffffff, 3); // Adjust intensity to a more moderate value
-directionalLight.position.set(1, 1, 1); // Position of the light in the 3D space
+directionalLight.position.set(10, 10, 1); // Position of the light in the 3D space
 rightScene.add(directionalLight);
 
 // Optional: Add ambient light for softer lighting (providing basic light throughout the scene)
@@ -171,35 +171,63 @@ function genCourtyardShapes(points, deflationFactor) {
     return innerShapes; // Return an array of inner shapes
 }
 
-function skeletonizeShape(outerShapes, innerShapes, elevation) {
-    // Transformation to 3.js based on https://github.com/StrandedKitty/straight-skeleton/blob/main/src/example/index.ts
-    const polygon = [
-        [
-            [-1, -1],
-            [0, -12],
-            [1, -1],
-            [12, 0],
-            [1, 1],
-            [0, 12],
-            [-1, 1],
-            [-12, 0],
-            [-1, -1]
-        ], [
-            [-1, 0],
-            [0, 1],
-            [1, 0],
-            [0, -1],
-            [-1, 0]
-        ]
-    ];
+function ensureCounterClockwise(points) {
+    const area = points.reduce((sum, point, i) => {
+        const nextPoint = points[(i + 1) % points.length];
+        return sum + (nextPoint[0] - point[0]) * (nextPoint[1] + point[1]);
+    }, 0);
 
+    // If area is negative, the points are clockwise; if positive, they're counter-clockwise
+    if (area > 0) {
+        return points.reverse(); // Reverse points to make them counter-clockwise
+    }
+    return points;
+}
+
+function ensureClockwise(points) {
+    const area = points.reduce((sum, point, i) => {
+        const nextPoint = points[(i + 1) % points.length];
+        return sum + (nextPoint[0] - point[0]) * (nextPoint[1] + point[1]);
+    }, 0);
+
+    // If area is negative, the points are clockwise; if positive, they're counter-clockwise
+    if (area < 0) {
+        return points.reverse(); // Reverse points to make them counter-clockwise
+    }
+    return points;
+}
+
+function shapeToPolygon(shape) {
+    // Extract the outer and inner rings (holes)
+    const outerRing = shape.getPoints(); // Get the outer boundary
+    const holes = shape.holes; // Get the holes (inner rings)
+
+    // Convert the outer ring to the required format (x, y)
+    const outerPolygon = outerRing.map(point => [point.x, point.y]);
+
+    // Ensure the outer ring is counter-clockwise
+    const outerPolygonCCW = ensureCounterClockwise(outerPolygon);
+
+    // Convert the holes (inner rings) to the required format and ensure clockwise order
+    const innerPolygons = holes.map(hole => {
+        const holePoints = hole.getPoints().map(point => [point.x, point.y]);
+        return ensureClockwise(holePoints); // Ensure clockwise ordering for holes
+    });
+
+    // Return the polygon in the required format
+    return [outerPolygonCCW, ...innerPolygons];
+}
+
+
+
+function skeletonizeShape(shape, elevation) {
+    const roofScale = 2;
+    const polygon = shapeToPolygon(shape);
     // Generate the skeleton mesh using the polygon
     const result = SkeletonBuilder.buildFromPolygon(polygon);
-    // console.log(result);
-    // Extract vertices and polygons from the result object
+
     const geometry = new THREE.BufferGeometry();
     const vertices = [];
-    const scale = 1;
 
     for (const polygon of result.polygons) {
         const polygonVertices = [];
@@ -207,9 +235,9 @@ function skeletonizeShape(outerShapes, innerShapes, elevation) {
         for (let i = 0; i < polygon.length; i++) {
             const vertex = result.vertices[polygon[i]];
             polygonVertices.push(
-                (vertex[0]) * scale,
-                (vertex[1]) * scale,
-                (vertex[2]) * scale
+                (vertex[0]),
+                (vertex[1]),
+                (vertex[2])
             );
         }
 
@@ -218,7 +246,6 @@ function skeletonizeShape(outerShapes, innerShapes, elevation) {
         for (let i = 0; i < triangles.length / 3; i++) {
             for (let j = 0; j < 3; j++) {
                 const index = triangles[i * 3 + j];
-
                 vertices.push(polygonVertices[index * 3], polygonVertices[index * 3 + 1], polygonVertices[index * 3 + 2]);
             }
         }
@@ -226,14 +253,23 @@ function skeletonizeShape(outerShapes, innerShapes, elevation) {
 
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
 
-    const material = new THREE.MeshBasicMaterial({
-        color: 0x00ff00,   // Green color for the mesh
-        wireframe: false    // Wireframe mode to visualize the polygons clearly
+    // Recalculate the normals
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshPhongMaterial({
+        color: roofColor, // Green color for the mesh
+        side: THREE.DoubleSide,
+        wireframe: false,
+        shininess: 30,   // Controls the shininess of the material
+        flatShading: false // Set to true for flat shading if desired
     });
+
     const skeletonMesh = new THREE.Mesh(geometry, material);
 
-    skeletonMesh.position.y = 2*elevation;
+    skeletonMesh.scale.z = roofScale;
+    skeletonMesh.position.y = elevation;
     skeletonMesh.rotation.x = -Math.PI / 2;
+
     return skeletonMesh;
 }
 
@@ -265,7 +301,7 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
 
 // Function to update the 3D projection on the right part of the scene
 function update3DProjection(deflationFactor) {
-    let extrudeAmount = 2;
+    let extrudeAmount = 1;
 
     if (projectedPolygon) {
         rightScene.remove(projectedPolygon);
@@ -303,7 +339,6 @@ function update3DProjection(deflationFactor) {
 
         // Step 4: Generate the inner shapes using the updated genInnerShapes function
         const innerShapes = genCourtyardShapes(points, deflationFactor);
-        previosRoofSkeleton = skeletonizeShape(outerShape, innerShapes, extrudeAmount + 0.5);
 
         // Step 5: Add each inner shape as a hole in the outer shape
         innerShapes.forEach((innerShape) => {
@@ -311,8 +346,9 @@ function update3DProjection(deflationFactor) {
         });
 
         // Create roof
-        const roofMesh = genRoofMesh(outerShape, extrudeAmount + 0.1, roofColor);
-        
+        const roofMesh = genRoofMesh(outerShape, extrudeAmount, roofColor);
+        previosRoofSkeleton = skeletonizeShape(outerShape, extrudeAmount + 0.01);
+
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
             depth: extrudeAmount, // Thickness of the extrusion
@@ -454,11 +490,20 @@ leftContainer.addEventListener('mouseup', onMouseUp);
 leftContainer.addEventListener('contextmenu', event => event.preventDefault());
 
 // Render loop
+let angle = 0; // Initial angle
+
 function animate() {
-    // Rotate the projected polygon around the Z-axis
-    if (projectedPolygon) {
-        // projectedPolygon.rotation.z += 0.01; // Adjust the value to control the speed of rotation
-    }
+    // Update the camera position to rotate around the origin
+    angle += 0.001; // Adjust the speed of the rotation
+    const radius = 10; // Radius of the orbit
+    const cameraHeight = 5; // Height of the camera from the origin
+
+    rightCamera.position.x = radius * Math.cos(angle);
+    rightCamera.position.z = radius * Math.sin(angle);
+    rightCamera.position.y = cameraHeight; // Keep the height fixed
+
+    // Make the cameras look at the center (0, 0, 0)
+    rightCamera.lookAt(0, 0, 0);
 
     // Render the scenes
     leftRenderer.render(leftScene, leftCamera);
@@ -467,4 +512,5 @@ function animate() {
     // Request the next frame
     requestAnimationFrame(animate);
 }
+
 animate();
