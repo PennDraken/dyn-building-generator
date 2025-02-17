@@ -345,7 +345,7 @@ function update3DProjection(deflationFactor) {
         outerShape.moveTo(points[0].x, points[0].y);
         points.forEach((p) => outerShape.lineTo(p.x, p.y));
         outerShape.lineTo(points[0].x, points[0].y); // Close the loop
-
+        
         // Step 4: Generate the inner shapes using the updated genInnerShapes function
         const innerShapes = genCourtyardShapes(points, deflationFactor);
 
@@ -501,11 +501,6 @@ function onMouseMove3d(event) {
         horisontalAngle += dx / 100;
         verticalAngle   += dy / 100;
     }
-    rightCamera.position.x = cameraRadius * Math.cos(horisontalAngle);
-    rightCamera.position.z = cameraRadius * Math.sin(horisontalAngle);
-    rightCamera.position.y = cameraRadius * Math.sin(verticalAngle);
-    rightCamera.lookAt(0, 0, 0);
-
     oldMouseX = event.x;
     oldMouseY = event.y;
 }
@@ -537,7 +532,7 @@ rightContainer.addEventListener('wheel', onMouseScroll3d);
 
 let cameraRadius = 10;
 let horisontalAngle = 0; // Initial angle
-let verticalAngle   = 0;
+let verticalAngle   = 40;
 
 function animate() {
     // Update the camera position to rotate around the origin
@@ -548,6 +543,11 @@ function animate() {
 
     // Make the cameras look at the center (0, 0, 0)
     // rightCamera.lookAt(0, 0, 0);
+    rightCamera.position.x = cameraRadius * Math.cos(horisontalAngle);
+    rightCamera.position.z = cameraRadius * Math.sin(horisontalAngle);
+    rightCamera.position.y = cameraRadius * Math.sin(verticalAngle);
+    rightCamera.lookAt(0, 0, 0);
+
 
     // Render the scenes
     leftRenderer.render(leftScene, leftCamera);
