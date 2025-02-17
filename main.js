@@ -32,7 +32,7 @@ leftContainer.appendChild(leftRenderer.domElement);
 
 // Set up the scene, camera, and renderer for the right side
 const rightScene = new THREE.Scene();
-const rightCamera = new THREE.PerspectiveCamera(75, rightContainer.offsetWidth / rightContainer.offsetHeight, 0.1, 1000);
+const rightCamera = new THREE.PerspectiveCamera(30, rightContainer.offsetWidth / rightContainer.offsetHeight, 0.1, 1000);
 rightCamera.position.set(5, 10, 10);
 rightCamera.lookAt(0, 0, 0);
 
@@ -339,15 +339,21 @@ function update3DProjection(deflationFactor) {
         });
         centroidX /= points.length;
         centroidY /= points.length;
-
-        // Step 3: Create the outer shape (the bigger polygon)
+    
+        // Step 2: Adjust all points to center the shape at (0, 0)
+        const centeredPoints = points.map((p) => ({
+            x: p.x - centroidX,
+            y: p.y - centroidY
+        }));
+    
+        // Step 3: Create the outer shape (the bigger polygon) using centered points
         const outerShape = new THREE.Shape();
-        outerShape.moveTo(points[0].x, points[0].y);
-        points.forEach((p) => outerShape.lineTo(p.x, p.y));
-        outerShape.lineTo(points[0].x, points[0].y); // Close the loop
-        
+        outerShape.moveTo(centeredPoints[0].x, centeredPoints[0].y);
+        centeredPoints.forEach((p) => outerShape.lineTo(p.x, p.y));
+        outerShape.lineTo(centeredPoints[0].x, centeredPoints[0].y); // Close the loop
+    
         // Step 4: Generate the inner shapes using the updated genInnerShapes function
-        const innerShapes = genCourtyardShapes(points, deflationFactor);
+        const innerShapes = genCourtyardShapes(centeredPoints, deflationFactor);
 
         // Step 5: Add each inner shape as a hole in the outer shape
         innerShapes.forEach((innerShape) => {
@@ -543,9 +549,11 @@ function animate() {
 
     // Make the cameras look at the center (0, 0, 0)
     // rightCamera.lookAt(0, 0, 0);
-    rightCamera.position.x = cameraRadius * Math.cos(horisontalAngle);
-    rightCamera.position.z = cameraRadius * Math.sin(horisontalAngle);
+    rightCamera.position.x = cameraRadius * Math.cos(horisontalAngle) * Math.cos(verticalAngle);
     rightCamera.position.y = cameraRadius * Math.sin(verticalAngle);
+    rightCamera.position.z = cameraRadius * Math.sin(horisontalAngle) * Math.cos(verticalAngle);
+    verticalAngle = Math.min(0.9*Math.PI, verticalAngle)
+    verticalAngle = Math.max(0, verticalAngle)
     rightCamera.lookAt(0, 0, 0);
 
 
