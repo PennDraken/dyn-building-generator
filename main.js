@@ -81,6 +81,7 @@ let floorCount      = parseFloat(floorCountSlider.value);
 let floorHeight     = parseFloat(floorHeightSlider.value);
 let deflationFactor = parseFloat(deflationFactorSlider.value);
 let roofHeight      = parseFloat(roofHeightSlider.value);
+let windowDistance  = 4; // 4 meters between each window
 
 // Add an event listener to the slider to update the value
 deflationFactorSlider.addEventListener("input", () => {
@@ -190,17 +191,14 @@ function updatePolygon() {
     if (polygon) {
         leftScene.remove(polygon);
     }
-
     if (points.length > 2) {
-        sortedPoints = polySort(points);
-        // Sort the points in counter-clockwise order to avoid overlap
+        sortedPoints = polySort(points); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
         // Create the shape from the sorted points
         const shape = new THREE.Shape(sortedPoints.map(p => new THREE.Vector2(p.x, p.y)));
         const geometry = new THREE.ShapeGeometry(shape);
         polygon = new THREE.Mesh(geometry, polygonMaterial);
         leftScene.add(polygon);
     }
-
     update3DProjection();
 }
 
@@ -343,6 +341,7 @@ function skeletonizeShape(shape, elevation, roofHeight) {
 }
 
 function genRoofMesh(buildingShape, elevation, roofColor) {
+    // TODO Can probably be removed (unused)
     // Ensure the input is a valid THREE.Shape
     if (!(buildingShape instanceof THREE.Shape)) {
         throw new Error("Invalid building shape: Must be an instance of THREE.Shape.");
@@ -456,8 +455,8 @@ function update3DProjection() {
         // Step 11: Add the outer mesh and all inner meshes to the scene
         rightScene.add(projectedPolygon);
         // innerMeshes.forEach(mesh => rightScene.add(mesh));
-        previousRoofMesh = roofMesh;
-        rightScene.add(roofMesh);
+        // previousRoofMesh = roofMesh;
+        // rightScene.add(roofMesh);
         rightScene.add(previosRoofSkeleton);
 
         // Step 12: Store the inner meshes for removal in the next update

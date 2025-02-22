@@ -1,0 +1,36 @@
+/*Set width of sliders on right UI panel to be as wide as possible*/
+#ui-panel input[type="range"] {
+    width: 100%;
+}
+
+body {
+    margin: 0;
+    display: flex;
+    flex-direction: row;
+    height: 100vh;
+}
+#left, #right, #ui-panel {
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+#left {
+    width: 50%; /* Left panel takes half the width */
+}
+#right {
+    width: 50%; /* Right panel takes half the remaining width */
+}
+#ui-panel {
+    width: 300px; /* Fixed width for the UI panel */
+    background-color: #f0f0f0;
+    box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2); /* Optional: Add a shadow for separation */
+    overflow-y: auto; /* Scrollable if content overflows */
+    padding: 10px; /* Add some padding for better UI spacing */
+}
+canvas {
+    display: block;
+}
+label, input, span {
+    display: block; /* Stack UI elements vertically */
+    margin-bottom: 10px; /* Add space between elements */
+}
