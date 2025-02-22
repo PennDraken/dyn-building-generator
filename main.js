@@ -180,15 +180,13 @@ function updatePolygon() {
     }
 
     if (points.length > 2) {
-        // Sort the points in counter-clockwise order to avoid overlap
         const sortedPoints = polySort(points);
-
+        // Sort the points in counter-clockwise order to avoid overlap
         // Create the shape from the sorted points
         const shape = new THREE.Shape(sortedPoints.map(p => new THREE.Vector2(p.x, p.y)));
         const geometry = new THREE.ShapeGeometry(shape);
         polygon = new THREE.Mesh(geometry, polygonMaterial);
         leftScene.add(polygon);
-        points = sortedPoints;
     }
 
     update3DProjection();
@@ -271,8 +269,6 @@ function shapeToPolygon(shape) {
     return [outerPolygonCCW, ...innerPolygons];
 }
 
-
-
 function skeletonizeShape(shape, elevation, roofHeight) {
     // const roofScale = 2;
     const polygon = shapeToPolygon(shape);
@@ -334,7 +330,6 @@ function skeletonizeShape(shape, elevation, roofHeight) {
 
     return skeletonMesh;
 }
-
 
 function genRoofMesh(buildingShape, elevation, roofColor) {
     // Ensure the input is a valid THREE.Shape
