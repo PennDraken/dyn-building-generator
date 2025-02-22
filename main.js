@@ -11,11 +11,11 @@ SkeletonBuilder.init().catch((error) => {
 });
 
 // Colors
-const wallColor = 0xDAC6C6;
+const wallColor      = 0xDAC6C6;
 const bluePrintColor = 0xDAC6C6;
-const groundColor = 0x4D6C50;
-const pointsColor = 0xE1E1E1;
-const roofColor = 0xcc3300;
+const groundColor    = 0x4D6C50;
+const pointsColor    = 0xE1E1E1;
+const roofColor      = 0xcc3300;
 
 // Select containers for left and right sides
 const leftContainer = document.getElementById('left');
@@ -53,32 +53,48 @@ const rightRenderer = new THREE.WebGLRenderer();
 rightRenderer.setSize(rightContainer.offsetWidth, rightContainer.offsetHeight);
 rightContainer.appendChild(rightRenderer.domElement);
 
-// Add a directional light to the rightScene
+// Directional light
 const directionalLight = new THREE.DirectionalLight(0xffffff, 3); // Adjust intensity to a more moderate value
 directionalLight.position.set(10, 10, 1); // Position of the light in the 3D space
 rightScene.add(directionalLight);
 
-// Optional: Add ambient light for softer lighting (providing basic light throughout the scene)
+// Ambient light
 const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // Soft white light with moderate intensity
 rightScene.add(ambientLight);
 
 // Get references to the slider and value display
-const slider = document.getElementById("deflationFactorSlider");
-const sliderValueDisplay = document.getElementById("deflationFactorValue");
+const deflationFactorSlider = document.getElementById("deflationFactorSlider");
+const deflationFactorDisplay = document.getElementById("deflationFactorValue");
+
+const floorHeightSlider = document.getElementById("floorHeightSlider");
+const floorHeightDisplay = document.getElementById("floorHeightValue");
+
+const floorCountSlider = document.getElementById("floorCountSlider");
+const floorCountDisplay = document.getElementById("floorCountValue");
+
+// Init building properties
+let floorCount = parseFloat(floorCountSlider.value);
+let floorHeight = parseFloat(floorHeightSlider.value);
+let deflationFactor = parseFloat(deflationFactorSlider.value);
 
 // Add an event listener to the slider to update the value
-slider.addEventListener("input", () => {
-    const deflationFactor = parseFloat(slider.value);
-    sliderValueDisplay.textContent = deflationFactor.toFixed(2); // Update displayed value
-    update3DProjection(deflationFactor); // Pass the value to your function
+deflationFactorSlider.addEventListener("input", () => {
+    deflationFactor = parseFloat(deflationFactorSlider.value);
+    deflationFactorDisplay.textContent = deflationFactor.toFixed(2);
+    update3DProjection();
 });
 
-let deflationFactor = 40;
-window.onload = () => {
-    const initialDeflationFactor = parseFloat(slider.value);
-    deflationFactor = initialDeflationFactor;
-};
+floorHeightSlider.addEventListener("input", () => {
+    floorHeight = parseFloat(floorHeightSlider.value);
+    floorHeightDisplay.textContent = floorHeight.toFixed(2);
+    update3DProjection();
+});
 
+floorCountSlider.addEventListener("input", () => {
+    floorCount = parseFloat(floorCountSlider.value);
+    floorCountDisplay.textContent = floorCount.toFixed(2);
+    update3DProjection();
+});
 
 // Adjust camera and renderer on window resize
 function onWindowResize() {
@@ -175,7 +191,7 @@ function updatePolygon() {
         points = sortedPoints;
     }
 
-    update3DProjection(parseFloat(slider.value));
+    update3DProjection();
 }
 
 let previousInnerMeshes = [];
@@ -346,8 +362,8 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
 }
 
 // Function to update the 3D projection on the right part of the scene
-function update3DProjection(deflationFactor) {
-    let extrudeAmount = 1;
+function update3DProjection() {
+    let extrudeAmount = floorHeight * floorCount;
 
     if (projectedPolygon) {
         rightScene.remove(projectedPolygon);
