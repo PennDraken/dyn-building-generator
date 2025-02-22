@@ -303,9 +303,30 @@ function shapeToPolygon(shape) {
     return [outerPolygonCCW, ...innerPolygons];
 }
 
+function inflateShape(shape, radius) {
+    // Extract the points from the shape using getSpacedPoints (returns an array of THREE.Vector2)
+    const geoJsonCoords = shape.getSpacedPoints(30).map(pt => [pt.x, pt.y]);
+  
+    // Create a GeoJSON polygon
+    const geojson = turf.polygon([geoJsonCoords]);
+  
+    // Buffer (inflate) the shape using Turf.js
+    const bufferedGeoJson = turf.buffer(geojson, radius);
+  
+    // Convert the buffered GeoJSON back to three.js geometry
+    const inflatedShape = bufferedGeoJson.geometry.coordinates[0].map(pt => new THREE.Vector2(pt[0], pt[1]));
+  
+    // Create a new three.js Shape from the inflated coordinates
+    const newShape = new THREE.Shape(inflatedShape);
+  
+    // Return the inflated shape as a THREE.Shape
+    return newShape;
+  }
+
 function skeletonizeShape(shape, elevation, roofHeight) {
-    // const roofScale = 2;
     // Inflate shape slightly to create overhang
+    // shape = inflateShape(shape, 1);
+
     const polygon = shapeToPolygon(shape);
     
     // Generate the skeleton mesh using the polygon
@@ -391,8 +412,8 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
 function genWindows(polygon) {
     // NOTE: polygon here is a list of points (does not support inner holes)
     // Constants
-    const windowWidth = 1;
-    const windowHeight = 1.5;
+    const windowWidth = 0.8;
+    const windowHeight = 1.4;
     const windowElevation = 1;
         
     // Get center point of each edge
@@ -437,7 +458,7 @@ function genWindows(polygon) {
             plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
             plane.rotation.y = angle;
             
-            plane.position.set(p[0] + Math.sin(angle)*0.01, p[1] - Math.cos(angle)*0.01, windowElevation + floorI * floorHeight);
+            plane.position.set(p[0] + Math.sin(angle)*0.01, p[1] - Math.cos(angle)*0.01, windowElevation + floorI * floorHeight + windowHeight/2);
             windowGroup.add(plane);
         }
     }    
