@@ -118,6 +118,7 @@ window.addEventListener('resize', onWindowResize);
 
 // Variables for interactive points and polygon
 let points = [];
+let sortedPoints = [];
 let pointMeshes = [];
 let polygon = null;
 let hoveredPoint = null;
@@ -180,7 +181,7 @@ function updatePolygon() {
     }
 
     if (points.length > 2) {
-        const sortedPoints = polySort(points);
+        sortedPoints = polySort(points);
         // Sort the points in counter-clockwise order to avoid overlap
         // Create the shape from the sorted points
         const shape = new THREE.Shape(sortedPoints.map(p => new THREE.Vector2(p.x, p.y)));
@@ -337,13 +338,9 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
         throw new Error("Invalid building shape: Must be an instance of THREE.Shape.");
     }
 
-    // Generate the geometry for the roof using shape geometry
+    // Generate roof
     const shapeGeometry = new THREE.ShapeGeometry(buildingShape);
-
-    // Create a material for the roof
     const material = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide, wireframe: true });
-
-    // Create the roof mesh
     const roofMesh = new THREE.Mesh(shapeGeometry, material);
 
     // Compute the bounding box of the building shape to determine its height
@@ -377,19 +374,19 @@ function update3DProjection() {
         rightScene.remove(previosRoofSkeleton);
     }
     
-    if (points.length > 2) {
+    if (sortedPoints.length > 2) {
         // Step 1: Calculate the centroid of the polygon
         let centroidX = 0;
         let centroidY = 0;
-        points.forEach((p) => {
+        sortedPoints.forEach((p) => {
             centroidX += p.x;
             centroidY += p.y;
         });
-        centroidX /= points.length;
-        centroidY /= points.length;
+        centroidX /= sortedPoints.length;
+        centroidY /= sortedPoints.length;
     
         // Step 2: Adjust all points to center the shape at (0, 0)
-        const centeredPoints = points.map((p) => ({
+        const centeredPoints = sortedPoints.map((p) => ({
             x: p.x - centroidX,
             y: p.y - centroidY
         }));
@@ -587,7 +584,7 @@ rightContainer.addEventListener('mousemove', onMouseMove3d);
 rightContainer.addEventListener('mouseup', onMouseUp3d);
 rightContainer.addEventListener('wheel', onMouseScroll3d);
 
-let cameraRadius = 10;
+let cameraRadius = 100;
 let horisontalAngle = 0; // Initial angle
 let verticalAngle   = 0.1;
 
