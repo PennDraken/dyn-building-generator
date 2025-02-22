@@ -46,19 +46,19 @@
 			<input
 				type="range"
 				id="deflationFactorSlider"
-				min="1"
-				max="200"
+				min="4"
+				max="500"
 				step="1"
-				value="50"
+				value="200"
 			/>
-			<span id="deflationFactorValue">1</span>
+			<span id="deflationFactorValue">200</span>
 
-			<label for="floorHeightSlider">Flor height:</label>
+			<label for="floorHeightSlider">Floor height:</label>
 			<input
 				type="range"
 				id="floorHeightSlider"
-				min="1"
-				max="10"
+				min="2"
+				max="3"
 				step="0.1"
 				value="2.5"
 			/>
@@ -69,11 +69,23 @@
 				type="range"
 				id="floorCountSlider"
 				min="1"
-				max="20"
+				max="15"
 				step="1"
-				value="1"
+				value="2"
 			/>
 			<span id="floorCountValue">1</span>
+
+			<label for="roofHeightSlider">Roof height:</label>
+			<input
+				type="range"
+				id="roofHeightSlider"
+				min="1"
+				max="15"
+				step="1"
+				value="3"
+			/>
+			<span id="roofHeightValue">3</span>
+
 		</div>
 		<script type="module" src="/main.js"></script>
 	</body>

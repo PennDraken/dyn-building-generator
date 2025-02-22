@@ -25,6 +25,7 @@ const rightContainer = document.getElementById('right');
 const leftScene = new THREE.Scene();
 const leftCamera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 1000);
 leftCamera.position.z = 10;
+leftCamera.zoom = 0.5;
 
 const leftRenderer = new THREE.WebGLRenderer();
 leftRenderer.setSize(leftContainer.offsetWidth, leftContainer.offsetHeight);
@@ -63,19 +64,23 @@ const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // Soft white light 
 rightScene.add(ambientLight);
 
 // Get references to the slider and value display
-const deflationFactorSlider = document.getElementById("deflationFactorSlider");
+const deflationFactorSlider  = document.getElementById("deflationFactorSlider");
 const deflationFactorDisplay = document.getElementById("deflationFactorValue");
 
-const floorHeightSlider = document.getElementById("floorHeightSlider");
+const floorHeightSlider  = document.getElementById("floorHeightSlider");
 const floorHeightDisplay = document.getElementById("floorHeightValue");
 
-const floorCountSlider = document.getElementById("floorCountSlider");
+const floorCountSlider  = document.getElementById("floorCountSlider");
 const floorCountDisplay = document.getElementById("floorCountValue");
 
+const roofHeightSlider  = document.getElementById("roofHeightSlider");
+const roofHeightDisplay = document.getElementById("roofHeightValue");
+
 // Init building properties
-let floorCount = parseFloat(floorCountSlider.value);
-let floorHeight = parseFloat(floorHeightSlider.value);
+let floorCount      = parseFloat(floorCountSlider.value);
+let floorHeight     = parseFloat(floorHeightSlider.value);
 let deflationFactor = parseFloat(deflationFactorSlider.value);
+let roofHeight      = parseFloat(roofHeightSlider.value);
 
 // Add an event listener to the slider to update the value
 deflationFactorSlider.addEventListener("input", () => {
@@ -93,6 +98,12 @@ floorHeightSlider.addEventListener("input", () => {
 floorCountSlider.addEventListener("input", () => {
     floorCount = parseFloat(floorCountSlider.value);
     floorCountDisplay.textContent = floorCount.toFixed(2);
+    update3DProjection();
+});
+
+roofHeightSlider.addEventListener("input", () => {
+    roofHeight = parseFloat(roofHeightSlider.value);
+    roofHeightDisplay.textContent = roofHeight.toFixed(2);
     update3DProjection();
 });
 
@@ -315,7 +326,6 @@ function skeletonizeShape(shape, elevation, roofHeight) {
 
     const skeletonMesh = new THREE.Mesh(geometry, material);
 
-
     // lets scale the roof so its a fixed height
     // First we find the original height by finding min and max y of the vertices
     const yValues = vertices.filter((_, index) => index % 3 === 2);
@@ -323,7 +333,7 @@ function skeletonizeShape(shape, elevation, roofHeight) {
     const maxY = Math.max(...yValues);
     const currHeight = (maxY - minY);
     const roofScale = roofHeight/currHeight;
-    console.log(currHeight);
+    // console.log(currHeight);
 
     skeletonMesh.scale.z = roofScale;
     skeletonMesh.position.y = elevation;
@@ -407,7 +417,7 @@ function update3DProjection() {
 
         // Create roof
         const roofMesh = genRoofMesh(outerShape, extrudeAmount, roofColor);
-        previosRoofSkeleton = skeletonizeShape(outerShape, extrudeAmount + 0.01, 0.5);
+        previosRoofSkeleton = skeletonizeShape(outerShape, extrudeAmount + 0.01, roofHeight);
 
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
@@ -589,19 +599,11 @@ let horisontalAngle = 0; // Initial angle
 let verticalAngle   = 0.1;
 
 function animate() {
-    // Update the camera position to rotate around the origin
-    // angle += 0.001; // Adjust the speed of the rotation
-    // rightCamera.position.x = radius * Math.cos(angle);
-    // rightCamera.position.z = radius * Math.sin(angle);
-    // rightCamera.position.y = cameraHeight; // Keep the height fixed
-
     // Make the cameras look at the center (0, 0, 0)
-    // rightCamera.lookAt(0, 0, 0);
     rightCamera.position.x = cameraRadius * Math.cos(horisontalAngle) * Math.cos(verticalAngle);
     rightCamera.position.y = cameraRadius * Math.sin(verticalAngle);
     rightCamera.position.z = cameraRadius * Math.sin(horisontalAngle) * Math.cos(verticalAngle);
     rightCamera.lookAt(0, 0, 0);
-
 
     // Render the scenes
     leftRenderer.render(leftScene, leftCamera);
