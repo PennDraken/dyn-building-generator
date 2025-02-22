@@ -16,6 +16,7 @@ const bluePrintColor = 0xDAC6C6;
 const groundColor    = 0x4D6C50;
 const pointsColor    = 0xE1E1E1;
 const roofColor      = 0xcc3300;
+const windowColor    = 0xffffff;
 
 // Select containers for left and right sides
 const leftContainer = document.getElementById('left');
@@ -63,6 +64,13 @@ rightScene.add(directionalLight);
 const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // Soft white light with moderate intensity
 rightScene.add(ambientLight);
 
+const windowMaterial = new THREE.MeshBasicMaterial({
+    color: windowColor,  
+    side: THREE.DoubleSide,
+    opacity: 0.5,
+    transparent: true
+});
+
 // Get references to the slider and value display
 const deflationFactorSlider  = document.getElementById("deflationFactorSlider");
 const deflationFactorDisplay = document.getElementById("deflationFactorValue");
@@ -76,12 +84,15 @@ const floorCountDisplay = document.getElementById("floorCountValue");
 const roofHeightSlider  = document.getElementById("roofHeightSlider");
 const roofHeightDisplay = document.getElementById("roofHeightValue");
 
+const windowDistanceSlider  = document.getElementById("windowDistanceSlider");
+const windowDistanceDisplay = document.getElementById("windowDistanceValue");
+
 // Init building properties
 let floorCount      = parseFloat(floorCountSlider.value);
 let floorHeight     = parseFloat(floorHeightSlider.value);
 let deflationFactor = parseFloat(deflationFactorSlider.value);
 let roofHeight      = parseFloat(roofHeightSlider.value);
-let windowDistance  = 4; // 4 meters between each window
+let windowDistance  = parseFloat(windowDistanceDisplay.value);
 
 // Add an event listener to the slider to update the value
 deflationFactorSlider.addEventListener("input", () => {
@@ -105,6 +116,12 @@ floorCountSlider.addEventListener("input", () => {
 roofHeightSlider.addEventListener("input", () => {
     roofHeight = parseFloat(roofHeightSlider.value);
     roofHeightDisplay.textContent = roofHeight.toFixed(2);
+    update3DProjection();
+});
+
+windowDistanceSlider.addEventListener("input", () => {
+    windowDistance = parseFloat(windowDistanceSlider.value);
+    windowDistanceDisplay.textContent = windowDistance.toFixed(2);
     update3DProjection();
 });
 
@@ -188,11 +205,11 @@ function polySort(points) {
 }
 
 function updatePolygon() {
+    sortedPoints = polySort(points); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
     if (polygon) {
         leftScene.remove(polygon);
     }
     if (points.length > 2) {
-        sortedPoints = polySort(points); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
         // Create the shape from the sorted points
         const shape = new THREE.Shape(sortedPoints.map(p => new THREE.Vector2(p.x, p.y)));
         const geometry = new THREE.ShapeGeometry(shape);
@@ -203,8 +220,9 @@ function updatePolygon() {
 }
 
 let previousInnerMeshes = [];
-let previousRoofMesh = null;
+let previousRoofMesh    = null;
 let previosRoofSkeleton = null;
+let previosWindowMeshes = null;
 function genCourtyardShapes(points, deflationFactor) {
     // Step 1: Convert the points into a Turf.js polygon
     const coordinates = points.map(p => [p.x, p.y]);
@@ -362,6 +380,67 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
     return roofMesh;
 }
 
+function genWindows(polygon) {
+    // NOTE: polygon here is a list of points (does not support inner holes)
+    // Constants
+    const windowWidth = 1;
+    const windowHeight = 1.5;
+    const windowElevation = 1;
+    
+    console.log(polygon);
+    
+    // Get center point of each edge
+    let centerPoints = [];
+    for (let i = 0; i < polygon.length; i++) {
+        let p1 = polygon[i];
+        let p2 = polygon[(i + 1) % polygon.length]; // Wrap around for closed polygon
+        centerPoints.push([
+            p2.x - (p2.x - p1.x) / 2, 
+            p2.y - (p2.y - p1.y) / 2
+        ]);
+    }
+
+    // Expand outwards to find all window locations
+    let windowPoints = [];
+    for (let i = 0; i < polygon.length; i++) {
+        let p1 = polygon[i];
+        let p2 = polygon[(i + 1) % polygon.length]; // Wrap around for closed polygon
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);  // Calculate angle for window placement
+        const wallWidth = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+        const windowCount = Math.floor(wallWidth / windowDistance); // Number of windows that fit along the edge
+        const windowOffset = (wallWidth - windowCount * windowDistance) / 2
+        // const windowOffset = 0;
+        for (let j = 0; j < windowCount; j++) { // j is index of a given window
+            const offsetX = Math.cos(angle) * (j * windowDistance + windowOffset + windowDistance/2);
+            const offsetY = Math.sin(angle) * (j * windowDistance + windowOffset + windowDistance/2);
+            windowPoints.push([p1.x + offsetX, p1.y + offsetY, angle]);
+        }
+    }
+    console.log(windowPoints);
+
+    // Place windows model at locations (for now a simple plane)
+    let windowGroup = new THREE.Group();
+    for (let i = 0; i < windowPoints.length; i++) {
+        for (let floorI = 0; floorI < floorCount; floorI++) {
+            let p = windowPoints[i];
+            const planeGeometry = new THREE.PlaneGeometry(windowWidth, windowHeight);
+            
+            const plane = new THREE.Mesh(planeGeometry, windowMaterial);
+            const angle = p[2];
+        
+            // Wacky rotations to place window in correct direction
+            plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+            plane.rotation.y = angle;
+            
+            plane.position.set(p[0] + Math.sin(angle)*0.01, p[1] - Math.cos(angle)*0.01, windowElevation + floorI * floorHeight);
+            windowGroup.add(plane);
+        }
+    }    
+    // Return generated mesh
+    return windowGroup;
+}
+
+
 // Function to update the 3D projection on the right part of the scene
 function update3DProjection() {
     let extrudeAmount = floorHeight * floorCount;
@@ -381,6 +460,10 @@ function update3DProjection() {
 
     if (previosRoofSkeleton) {
         rightScene.remove(previosRoofSkeleton);
+    }
+
+    if (previosWindowMeshes) {
+        rightScene.remove(previosWindowMeshes);
     }
     
     if (sortedPoints.length > 2) {
@@ -408,6 +491,10 @@ function update3DProjection() {
     
         // Step 4: Generate the inner shapes using the updated genInnerShapes function
         const innerShapes = genCourtyardShapes(centeredPoints, deflationFactor);
+
+        // Generate windows
+        previosWindowMeshes = genWindows(centeredPoints);
+        previosWindowMeshes.rotation.x = -Math.PI / 2;
 
         // Step 5: Add each inner shape as a hole in the outer shape
         innerShapes.forEach((innerShape) => {
@@ -458,7 +545,7 @@ function update3DProjection() {
         // previousRoofMesh = roofMesh;
         // rightScene.add(roofMesh);
         rightScene.add(previosRoofSkeleton);
-
+        rightScene.add(previosWindowMeshes);
         // Step 12: Store the inner meshes for removal in the next update
         // previousInnerMeshes = innerMeshes;
     }
@@ -574,7 +661,7 @@ function onMouseUp3d(event) {
 
 function onMouseScroll3d(event) {
     event.preventDefault();
-    cameraRadius += event.deltaY / 100;
+    cameraRadius += event.deltaY / 10;
     onMouseMove3d();
 }
 
