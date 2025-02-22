@@ -232,12 +232,17 @@ function genCourtyardShapes(points, deflationFactor) {
     // Negative value for deflation (shrink the polygon)
     const offsetPolygon = turf.buffer(polygon, -deflationFactor);
 
-    // Step 3: Handle multiple inner shapes (MultiPolygon)
+    // Step 3: Check if the deflation factor has shrunk the polygon too much
+    if (!offsetPolygon || turf.area(offsetPolygon) <= 0) {
+        return []; // Return empty array if the deflation is too high or the polygon is invalid
+    }
+
+    // Step 4: Handle multiple inner shapes (MultiPolygon)
     const geometries = offsetPolygon.geometry.type === 'MultiPolygon' 
         ? offsetPolygon.geometry.coordinates 
         : [offsetPolygon.geometry.coordinates];
 
-    // Step 4: Convert each inner polygon into a THREE.Shape
+    // Step 5: Convert each inner polygon into a THREE.Shape
     const innerShapes = geometries.map((coords) => {
         const innerShape = new THREE.Shape();
         const [outerRing] = coords; // Use the first ring (outer boundary) of each polygon
@@ -249,6 +254,7 @@ function genCourtyardShapes(points, deflationFactor) {
 
     return innerShapes; // Return an array of inner shapes
 }
+
 
 function ensureCounterClockwise(points) {
     const area = points.reduce((sum, point, i) => {
@@ -299,7 +305,9 @@ function shapeToPolygon(shape) {
 
 function skeletonizeShape(shape, elevation, roofHeight) {
     // const roofScale = 2;
+    // Inflate shape slightly to create overhang
     const polygon = shapeToPolygon(shape);
+    
     // Generate the skeleton mesh using the polygon
     const result = SkeletonBuilder.buildFromPolygon(polygon);
 
@@ -386,9 +394,7 @@ function genWindows(polygon) {
     const windowWidth = 1;
     const windowHeight = 1.5;
     const windowElevation = 1;
-    
-    console.log(polygon);
-    
+        
     // Get center point of each edge
     let centerPoints = [];
     for (let i = 0; i < polygon.length; i++) {
@@ -416,7 +422,6 @@ function genWindows(polygon) {
             windowPoints.push([p1.x + offsetX, p1.y + offsetY, angle]);
         }
     }
-    console.log(windowPoints);
 
     // Place windows model at locations (for now a simple plane)
     let windowGroup = new THREE.Group();
