@@ -1,6 +1,7 @@
 // to start server:
 // npx vite 
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as turf from '@turf/turf';
 import earcut from "earcut"; // Used for triangulation of skeletonisation
 import { deflate } from 'three/examples/jsm/libs/fflate.module.js';
@@ -17,6 +18,16 @@ const groundColor    = 0x4D6C50;
 const pointsColor    = 0xE1E1E1;
 const roofColor      = 0xcc3300;
 const windowColor    = 0xffffff;
+
+// Load models
+let windowModel = null;
+const loader = new GLTFLoader();
+loader.load('models/window1.glb', function (gltf) {
+    windowModel = gltf.scene;
+    console.log("Window model loaded!");
+}, undefined, function (error) {
+    console.error('Error loading window model:', error);
+});
 
 // Select containers for left and right sides
 const leftContainer = document.getElementById('left');
@@ -153,7 +164,7 @@ let polygon = null;
 let hoveredPoint = null;
 
 // Right-side 3D polygon
-let projectedPolygon = null;
+let buildingWalls = null;
 
 // Material for points and lines
 const pointMaterial = new THREE.MeshBasicMaterial({ color: pointsColor });
@@ -449,17 +460,16 @@ function genWindows(polygon) {
     for (let i = 0; i < windowPoints.length; i++) {
         for (let floorI = 0; floorI < floorCount; floorI++) {
             let p = windowPoints[i];
-            const planeGeometry = new THREE.PlaneGeometry(windowWidth, windowHeight);
+            let windowClone = windowModel.clone(); // Clone the preloaded model
             
-            const plane = new THREE.Mesh(planeGeometry, windowMaterial);
             const angle = p[2];
         
             // Wacky rotations to place window in correct direction
-            plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-            plane.rotation.y = angle;
+            windowClone.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+            windowClone.rotation.y = angle;
             
-            plane.position.set(p[0] + Math.sin(angle)*0.01, p[1] - Math.cos(angle)*0.01, windowElevation + floorI * floorHeight + windowHeight/2);
-            windowGroup.add(plane);
+            windowClone.position.set(p[0] + Math.sin(angle)*0.01, p[1] - Math.cos(angle)*0.01, windowElevation + floorI * floorHeight + windowHeight/2);
+            windowGroup.add(windowClone);
         }
     }    
     // Return generated mesh
@@ -471,8 +481,8 @@ function genWindows(polygon) {
 function update3DProjection() {
     let extrudeAmount = floorHeight * floorCount;
 
-    if (projectedPolygon) {
-        rightScene.remove(projectedPolygon);
+    if (buildingWalls) {
+        rightScene.remove(buildingWalls);
     }
 
     if (previousRoofMesh) {
@@ -547,10 +557,11 @@ function update3DProjection() {
         });
 
         // Step 9: Create the outer mesh
-        projectedPolygon = new THREE.Mesh(extrudeGeometry, outerMaterial);
-        projectedPolygon.rotation.x = -Math.PI / 2;
-
+        buildingWalls = new THREE.Mesh(extrudeGeometry, outerMaterial);
+        buildingWalls.rotation.x = -Math.PI / 2;
+        // buildingWalls.holes.push(previosWindowMeshes);
         // Step 10: Extrude each inner shape to 3D and store them
+        // TODO Remove this (unused)
         const innerMeshes = [];
         const innerMaterial = new THREE.MeshPhongMaterial({
             color: 0x00ff00, // Green color for the inner shapes
@@ -566,7 +577,7 @@ function update3DProjection() {
         });
 
         // Step 11: Add the outer mesh and all inner meshes to the scene
-        rightScene.add(projectedPolygon);
+        rightScene.add(buildingWalls);
         // innerMeshes.forEach(mesh => rightScene.add(mesh));
         // previousRoofMesh = roofMesh;
         // rightScene.add(roofMesh);
