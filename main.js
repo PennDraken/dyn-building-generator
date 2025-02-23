@@ -62,7 +62,9 @@ plane.rotation.x = - Math.PI / 2;
 plane.position.set(0, 0, 0);
 rightScene.add(plane);
 
-const rightRenderer = new THREE.WebGLRenderer();
+const rightRenderer = new THREE.WebGLRenderer(
+    {stencil: true}
+);
 rightRenderer.setSize(rightContainer.offsetWidth, rightContainer.offsetHeight);
 rightContainer.appendChild(rightRenderer.domElement);
 
@@ -80,6 +82,15 @@ const windowMaterial = new THREE.MeshBasicMaterial({
     side: THREE.DoubleSide,
     opacity: 0.5,
     transparent: true
+});
+
+const stencilMaterial = new THREE.MeshBasicMaterial({
+    colorWrite: false, // Don't draw color
+    depthWrite: false, // Don't write to depth buffer
+    stencilWrite: true,
+    stencilFunc: THREE.AlwaysStencilFunc,
+    stencilRef: 1,
+    stencilZPass: THREE.ReplaceStencilOp, // Replace stencil where this mesh is drawn
 });
 
 // Get references to the slider and value display
@@ -373,7 +384,7 @@ function skeletonizeShape(shape, elevation, roofHeight) {
     geometry.computeVertexNormals();
 
     const material = new THREE.MeshPhongMaterial({
-        color: roofColor, // Green color for the mesh
+        color: roofColor,
         side: THREE.DoubleSide,
         wireframe: false,
         shininess: 30,   // Controls the shininess of the material
@@ -423,8 +434,8 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
 function genWindows(polygon) {
     // NOTE: polygon here is a list of points (does not support inner holes)
     // Constants
-    const windowWidth = 0.8;
-    const windowHeight = 1.4;
+    const windowWidth = 0.6;
+    const windowHeight = 0.83;
     const windowElevation = 1;
         
     // Get center point of each edge
@@ -460,16 +471,23 @@ function genWindows(polygon) {
     for (let i = 0; i < windowPoints.length; i++) {
         for (let floorI = 0; floorI < floorCount; floorI++) {
             let p = windowPoints[i];
-            let windowClone = windowModel.clone(); // Clone the preloaded model
-            
+            const windowClone = windowModel.clone(); // Clone the preloaded model
+            const planeGeometry = new THREE.PlaneGeometry(windowWidth, windowHeight);
+            const plane = new THREE.Mesh(planeGeometry, stencilMaterial);
+
             const angle = p[2];
         
             // Wacky rotations to place window in correct direction
             windowClone.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
             windowClone.rotation.y = angle;
-            
-            windowClone.position.set(p[0] + Math.sin(angle)*0.01, p[1] - Math.cos(angle)*0.01, windowElevation + floorI * floorHeight + windowHeight/2);
+            plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+            plane.rotation.y = angle;
+            const offset = 0;
+            windowClone.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
+            plane.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
+
             windowGroup.add(windowClone);
+            windowGroup.add(plane);
         }
     }    
     // Return generated mesh
@@ -551,13 +569,17 @@ function update3DProjection() {
         const extrudeGeometry = new THREE.ExtrudeGeometry(outerShape, extrudeSettings);
 
         // Step 8: Material for the outer 3D object
-        const outerMaterial = new THREE.MeshPhongMaterial({
+        const wallMaterial = new THREE.MeshPhongMaterial({
             color: wallColor, // Red color for the outer shape
-            side: THREE.DoubleSide, // Make sure both sides are visible
+            // side: THREE.DoubleSide, // Make sure both sides are visible
+            // Stencil to hide wall where windows are placed
+            stencilWrite: true,
+            stencilFunc: THREE.NotEqualStencilFunc,
+            stencilRef: 1,
         });
 
         // Step 9: Create the outer mesh
-        buildingWalls = new THREE.Mesh(extrudeGeometry, outerMaterial);
+        buildingWalls = new THREE.Mesh(extrudeGeometry, wallMaterial);
         buildingWalls.rotation.x = -Math.PI / 2;
         // buildingWalls.holes.push(previosWindowMeshes);
         // Step 10: Extrude each inner shape to 3D and store them
@@ -577,12 +599,13 @@ function update3DProjection() {
         });
 
         // Step 11: Add the outer mesh and all inner meshes to the scene
+        rightScene.add(previosWindowMeshes);
+
         rightScene.add(buildingWalls);
         // innerMeshes.forEach(mesh => rightScene.add(mesh));
         // previousRoofMesh = roofMesh;
         // rightScene.add(roofMesh);
         rightScene.add(previosRoofSkeleton);
-        rightScene.add(previosWindowMeshes);
         // Step 12: Store the inner meshes for removal in the next update
         // previousInnerMeshes = innerMeshes;
     }
