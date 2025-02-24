@@ -45,7 +45,7 @@ const rightContainer = document.getElementById('right');
 const leftScene = new THREE.Scene();
 const leftCamera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 1000);
 leftCamera.position.z = 10;
-leftCamera.zoom = 0.5;
+leftCamera.zoom = 0.1;
 
 const leftRenderer = new THREE.WebGLRenderer();
 leftRenderer.setSize(leftContainer.offsetWidth, leftContainer.offsetHeight);
@@ -95,7 +95,7 @@ const windowMaterial = new THREE.MeshBasicMaterial({
 
 const stencilMaterial = new THREE.MeshBasicMaterial({
     colorWrite: false, // Don't draw color
-    depthWrite: true, // Don't write to depth buffer
+    depthWrite: false, // Don't write to depth buffer
     stencilWrite: true,
     stencilFunc: THREE.AlwaysStencilFunc,
     stencilRef: 1,
@@ -123,7 +123,7 @@ let floorCount      = parseFloat(floorCountSlider.value);
 let floorHeight     = parseFloat(floorHeightSlider.value);
 let deflationFactor = parseFloat(deflationFactorSlider.value);
 let roofHeight      = parseFloat(roofHeightSlider.value);
-let windowDistance  = parseFloat(windowDistanceDisplay.value);
+let windowDistance  = 3; //parseFloat(windowDistanceDisplay.value); This does not work for some reason TODO fix this!
 
 // Add an event listener to the slider to update the value
 deflationFactorSlider.addEventListener("input", () => {
@@ -196,8 +196,9 @@ const polygonMaterial = new THREE.MeshBasicMaterial({
 });
 
 // Function to create a point mesh
+const pointRadius = 1.2
 function createPoint(x, y) {
-    const geometry = new THREE.CircleGeometry(0.2, 32);
+    const geometry = new THREE.CircleGeometry(pointRadius, 8);
     const point = new THREE.Mesh(geometry, pointMaterial);
     point.position.set(x, y, 0);
     return point;
@@ -378,7 +379,6 @@ function inflateShape(shape, radius) {
 function skeletonizeShape(shape, elevation, roofHeight) {
     // Inflate shape slightly to create overhang
     // shape = inflateShape(shape, 100);
-
     const polygon = shapeToPolygon(shape);
     
     // Generate the skeleton mesh using the polygon
@@ -609,9 +609,18 @@ function update3DProjection() {
             outerShape.holes.push(innerShape);
         });
 
+        // const roofMesh = genRoofMesh(outerShape, extrudeAmount, roofColor);
         // Create roof
-        const roofMesh = genRoofMesh(outerShape, extrudeAmount, roofColor);
-        previosRoofSkeleton = skeletonizeShape(outerShape, extrudeAmount + 0.01, roofHeight);
+        // Construct a polygon extreduded version of our walls (to create a slightly larger roof)
+        const roofExtrusion = 50;
+        const roofOuterShape  = genCourtyardShapes(centeredPoints, -roofExtrusion)[0];
+        const roofInnerShapes = genCourtyardShapes(centeredPoints, deflationFactor + roofExtrusion);
+        // Combine into shape
+        roofInnerShapes.forEach((innerShape) => {
+            roofOuterShape.holes.push(innerShape);
+        });
+
+        previosRoofSkeleton = skeletonizeShape(roofOuterShape, extrudeAmount, roofHeight);
 
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
@@ -624,7 +633,7 @@ function update3DProjection() {
 
         // Step 8: Material for the outer 3D object
         const wallMaterial = new THREE.MeshPhongMaterial({
-            color: wallColor, // Red color for the outer shape
+            color: wallColor,
             // side: THREE.DoubleSide, // Make sure both sides are visible
             // Stencil to hide wall where windows are placed
             stencilWrite: true,
