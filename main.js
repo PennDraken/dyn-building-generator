@@ -18,15 +18,23 @@ const groundColor    = 0x4D6C50;
 const pointsColor    = 0xE1E1E1;
 const roofColor      = 0xcc3300;
 const windowColor    = 0xffffff;
+const skyColor       = 0x66ccff;
 
 // Load models
 let windowModel = null;
+let doorModel   = null;
 const loader = new GLTFLoader();
 loader.load('models/window1.glb', function (gltf) {
     windowModel = gltf.scene;
     console.log("Window model loaded!");
 }, undefined, function (error) {
     console.error('Error loading window model:', error);
+});
+loader.load('models/door1.glb', function (gltf) {
+    doorModel = gltf.scene;
+    console.log("Door model loaded!");
+}, undefined, function (error) {
+    console.error('Error loading door model:', error);
 });
 
 // Select containers for left and right sides
@@ -50,21 +58,22 @@ rightCamera.position.set(5, 10, 10);
 rightCamera.lookAt(0, 0, 0);
 
 // Ground plane
-const planeGeometry = new THREE.PlaneGeometry(100, 100);
-const planeMaterial = new THREE.MeshBasicMaterial({
-    color: groundColor,  // White color
-    side: THREE.DoubleSide,  // Make the plane visible from both sides
-    opacity: 0.5,  // Optional: Adjust transparency if needed
-    transparent: true
+const planeGeometry = new THREE.PlaneGeometry(10000, 10000);
+const grassMaterial = new THREE.MeshBasicMaterial({
+    color: groundColor,
+    side: THREE.DoubleSide, 
 });
-const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-plane.rotation.x = - Math.PI / 2;
-plane.position.set(0, 0, 0);
-rightScene.add(plane);
+const grassPane = new THREE.Mesh(planeGeometry, grassMaterial);
+grassPane.rotation.x = - Math.PI / 2;
+grassPane.position.set(0, 0, 0);
+rightScene.add(grassPane);
+rightScene.background = new THREE.Color(skyColor);
 
-const rightRenderer = new THREE.WebGLRenderer(
-    {stencil: true}
-);
+const rightRenderer = new THREE.WebGLRenderer({
+    stencil: true,
+    depth: true, 
+    antialias: true
+});
 rightRenderer.setSize(rightContainer.offsetWidth, rightContainer.offsetHeight);
 rightContainer.appendChild(rightRenderer.domElement);
 
@@ -74,7 +83,7 @@ directionalLight.position.set(10, 10, 1); // Position of the light in the 3D spa
 rightScene.add(directionalLight);
 
 // Ambient light
-const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // Soft white light with moderate intensity
+const ambientLight = new THREE.AmbientLight(0x404040, 10); // Soft white light with moderate intensity
 rightScene.add(ambientLight);
 
 const windowMaterial = new THREE.MeshBasicMaterial({
@@ -327,27 +336,48 @@ function shapeToPolygon(shape) {
 
 function inflateShape(shape, radius) {
     // Extract the points from the shape using getSpacedPoints (returns an array of THREE.Vector2)
-    const geoJsonCoords = shape.getSpacedPoints(30).map(pt => [pt.x, pt.y]);
-  
+    const geoJsonCoords = shapeToPolygon(shape);
+    console.log(geoJsonCoords);
     // Create a GeoJSON polygon
-    const geojson = turf.polygon([geoJsonCoords]);
+    const geojson = turf.polygon(geoJsonCoords);
   
     // Buffer (inflate) the shape using Turf.js
-    const bufferedGeoJson = turf.buffer(geojson, radius);
-  
+    const offsetPolygon = turf.buffer(geojson, radius);
+
+    // Process the result
+    const geometries = offsetPolygon.geometry.type === 'MultiPolygon' 
+        ? offsetPolygon.geometry.coordinates 
+        : [offsetPolygon.geometry.coordinates];
+
+    // Step 5: Convert each inner polygon into a THREE.Shape
+    const innerShapes = geometries.map((coords) => {
+        const innerShape = new THREE.Shape();
+        const [outerRing] = coords; // Use the first ring (outer boundary) of each polygon
+        innerShape.moveTo(outerRing[0][0], outerRing[0][1]);
+        outerRing.forEach((coord) => innerShape.lineTo(coord[0], coord[1]));
+        innerShape.lineTo(outerRing[0][0], outerRing[0][1]); // Close the loop
+        return innerShape;
+    });
+
     // Convert the buffered GeoJSON back to three.js geometry
-    const inflatedShape = bufferedGeoJson.geometry.coordinates[0].map(pt => new THREE.Vector2(pt[0], pt[1]));
+    const inflatedShape = offsetPolygon.geometry.coordinates[0].map(pt => new THREE.Vector2(pt[0], pt[1]));
   
     // Create a new three.js Shape from the inflated coordinates
     const newShape = new THREE.Shape(inflatedShape);
-  
+    console.log(newShape);
+
+    // Add holes
+    innerShapes.forEach((innerShape) => {
+        outerShape.holes.push(innerShape);
+    });
+
     // Return the inflated shape as a THREE.Shape
     return newShape;
   }
 
 function skeletonizeShape(shape, elevation, roofHeight) {
     // Inflate shape slightly to create overhang
-    // shape = inflateShape(shape, 1);
+    // shape = inflateShape(shape, 100);
 
     const polygon = shapeToPolygon(shape);
     
@@ -434,10 +464,13 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
 function genWindows(polygon) {
     // NOTE: polygon here is a list of points (does not support inner holes)
     // Constants
-    const windowWidth = 0.6;
-    const windowHeight = 0.83;
-    const windowElevation = 1;
-        
+    const windowWidth = 0.6 * 1.5;
+    const windowHeight = 0.83 * 1.5;
+    const windowElevation = 0.7;
+    const doorWidth = 1.7;
+    const doorHeight = 2.1;
+    const doorElevation = 0;
+
     // Get center point of each edge
     let centerPoints = [];
     for (let i = 0; i < polygon.length; i++) {
@@ -468,26 +501,47 @@ function genWindows(polygon) {
 
     // Place windows model at locations (for now a simple plane)
     let windowGroup = new THREE.Group();
+    const doorMod = 10; // Place door every 10 windows (bottom floor)
     for (let i = 0; i < windowPoints.length; i++) {
         for (let floorI = 0; floorI < floorCount; floorI++) {
             let p = windowPoints[i];
-            const windowClone = windowModel.clone(); // Clone the preloaded model
-            const planeGeometry = new THREE.PlaneGeometry(windowWidth, windowHeight);
-            const plane = new THREE.Mesh(planeGeometry, stencilMaterial);
-
-            const angle = p[2];
+            if (i % doorMod == 0 && floorI == 0) {
+                // Doors
+                const doorClone = doorModel.clone(); // Clone the preloaded model
+                const stencilGeometry = new THREE.PlaneGeometry(doorWidth, doorHeight);
+                const plane = new THREE.Mesh(stencilGeometry, stencilMaterial);
+                const angle = p[2];
         
-            // Wacky rotations to place window in correct direction
-            windowClone.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-            windowClone.rotation.y = angle;
-            plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-            plane.rotation.y = angle;
-            const offset = 0;
-            windowClone.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
-            plane.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
-
-            windowGroup.add(windowClone);
-            windowGroup.add(plane);
+                // Wacky rotations to place window in correct direction
+                doorClone.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                doorClone.rotation.y = angle;
+                plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                plane.rotation.y = angle;
+                const offset = 0;
+                doorClone.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, doorElevation + floorI * floorHeight + doorHeight/2);
+                plane.position.set(    p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, doorElevation + floorI * floorHeight + doorHeight/2);
+    
+                windowGroup.add(doorClone);
+                windowGroup.add(plane);
+            } else {
+                // Windows
+                const windowClone = windowModel.clone(); // Clone the preloaded model
+                const planeGeometry = new THREE.PlaneGeometry(windowWidth, windowHeight);
+                const plane = new THREE.Mesh(planeGeometry, stencilMaterial);
+                const angle = p[2];
+        
+                // Wacky rotations to place window in correct direction
+                windowClone.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                windowClone.rotation.y = angle;
+                plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                plane.rotation.y = angle;
+                const offset = 0;
+                windowClone.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
+                plane.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
+    
+                windowGroup.add(windowClone);
+                windowGroup.add(plane);
+            }
         }
     }    
     // Return generated mesh
