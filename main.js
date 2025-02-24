@@ -378,7 +378,6 @@ function inflateShape(shape, radius) {
 
 function skeletonizeShape(shape, elevation, roofHeight) {
     // Inflate shape slightly to create overhang
-    // shape = inflateShape(shape, 100);
     const polygon = shapeToPolygon(shape);
     
     // Generate the skeleton mesh using the polygon
@@ -413,7 +412,7 @@ function skeletonizeShape(shape, elevation, roofHeight) {
     // Recalculate the normals
     geometry.computeVertexNormals();
 
-    const material = new THREE.MeshPhongMaterial({
+    const roofMaterial = new THREE.MeshPhongMaterial({
         color: roofColor,
         side: THREE.DoubleSide,
         wireframe: false,
@@ -421,7 +420,7 @@ function skeletonizeShape(shape, elevation, roofHeight) {
         flatShading: false // Set to true for flat shading if desired
     });
 
-    const skeletonMesh = new THREE.Mesh(geometry, material);
+    const skeletonMesh = new THREE.Mesh(geometry, roofMaterial);
 
     // lets scale the roof so its a fixed height
     // First we find the original height by finding min and max y of the vertices
@@ -461,7 +460,7 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
     return roofMesh;
 }
 
-function genWindows(polygon) {
+function genWindows(polygon, backwards) { // backwards reverses the direction of windows
     // NOTE: polygon here is a list of points (does not support inner holes)
     // Constants
     const windowWidth = 0.6 * 1.5;
@@ -505,7 +504,7 @@ function genWindows(polygon) {
     for (let i = 0; i < windowPoints.length; i++) {
         for (let floorI = 0; floorI < floorCount; floorI++) {
             let p = windowPoints[i];
-            if (i % doorMod == 0 && floorI == 0) {
+            if (i % doorMod == 0 && floorI == 0 && !backwards) {
                 // Doors
                 const doorClone = doorModel.clone(); // Clone the preloaded model
                 const stencilGeometry = new THREE.PlaneGeometry(doorWidth, doorHeight);
@@ -532,10 +531,16 @@ function genWindows(polygon) {
         
                 // Wacky rotations to place window in correct direction
                 windowClone.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-                windowClone.rotation.y = angle;
                 plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-                plane.rotation.y = angle;
-                const offset = 0;
+                let offset = 0;
+                if (backwards) {
+                    windowClone.rotation.y = angle - Math.PI;
+                    plane.rotation.y       = angle - Math.PI;
+                } else {
+                    windowClone.rotation.y = angle;
+                    plane.rotation.y       = angle;
+                }
+
                 windowClone.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
                 plane.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
     
@@ -601,7 +606,16 @@ function update3DProjection() {
         const innerShapes = genCourtyardShapes(centeredPoints, deflationFactor);
 
         // Generate windows
-        previosWindowMeshes = genWindows(centeredPoints);
+        previosWindowMeshes = genWindows(centeredPoints, false);
+        innerShapes.forEach(shape => {
+            const polygon = shapeToPolygon(shape);
+            const innerPoints = polygon[0].map((p) => ({
+                x: p[0],
+                y: p[1]
+            }));
+            const newWindows = genWindows(innerPoints, true);
+            previosWindowMeshes.add(newWindows);
+        });
         previosWindowMeshes.rotation.x = -Math.PI / 2;
 
         // Step 5: Add each inner shape as a hole in the outer shape
