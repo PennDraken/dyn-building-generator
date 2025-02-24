@@ -95,7 +95,7 @@ const windowMaterial = new THREE.MeshBasicMaterial({
 
 const stencilMaterial = new THREE.MeshBasicMaterial({
     colorWrite: false, // Don't draw color
-    depthWrite: false, // Don't write to depth buffer
+    depthWrite: true, // Don't write to depth buffer
     stencilWrite: true,
     stencilFunc: THREE.AlwaysStencilFunc,
     stencilRef: 1,
