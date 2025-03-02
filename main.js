@@ -21,13 +21,16 @@ const windowColor    = 0xffffff;
 const skyColor       = 0x66ccff;
 
 // Load models
-const windowWidth = 0.6 * 1.5;
-const windowHeight = 0.83 * 1.5;
+const windowWidth = 0.9;
+const windowHeight = 1.38;
 const windowElevation = 0.7;
 const doorWidth = 1.7;
 const doorHeight = 2.1;
 const doorElevation = 0;
 const doorMod = 10; // Place door every 10 windows (bottom floor)
+const windowEntranceWidth = 1.7;
+const windowEntranceHeight = 1.4;
+const windowEntranceElevation = 0.3;
 
 let windowModel = null;
 let doorModel   = null;
@@ -43,6 +46,12 @@ loader.load('models/door1.glb', function (gltf) {
     console.log("Door model loaded!");
 }, undefined, function (error) {
     console.error('Error loading door model:', error);
+});
+loader.load('models/window-entranec1.glb', function (gltf) {
+    doorModel = gltf.scene;
+    console.log("Entrance window model loaded!");
+}, undefined, function (error) {
+    console.error('Error loading entrance window model:', error);
 });
 
 // Select containers for left and right sides
@@ -513,7 +522,7 @@ function genWindows(polygon, backwards) { // backwards reverses the direction of
     for (let i = 0; i < windowPoints.length; i++) {
         for (let floorI = 0; floorI < floorCount; floorI++) {
             let p = windowPoints[i];
-            if (i % doorMod == 0 && floorI == 0 && !backwards) {
+            if (i % doorMod == 0 && floorI == 0) {
                 // Doors
                 const doorClone = doorModel.clone(); // Clone the preloaded model
                 const stencilGeometry = new THREE.PlaneGeometry(doorWidth, doorHeight);
@@ -522,10 +531,15 @@ function genWindows(polygon, backwards) { // backwards reverses the direction of
         
                 // Wacky rotations to place window in correct direction
                 doorClone.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-                doorClone.rotation.y = angle;
                 plane.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-                plane.rotation.y = angle;
                 const offset = 0;
+                if (backwards) {
+                    doorClone.rotation.y = angle - Math.PI;
+                    plane.rotation.y     = angle - Math.PI;
+                } else {
+                    doorClone.rotation.y = angle;
+                    plane.rotation.y     = angle;
+                }
                 doorClone.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, doorElevation + floorI * floorHeight + doorHeight/2);
                 plane.position.set(    p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, doorElevation + floorI * floorHeight + doorHeight/2);
     
@@ -580,6 +594,7 @@ function getWallsWithHoles(shape) {
     // Returns a list of meshes
     let wallList = [];
     let extrudeAmount = floorHeight * floorCount;
+    let placedWindows = 0;
     for (let i = 0; i < shape.curves.length; i++) {
         const { v1, v2 } = shape.curves[i];
         const width = Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2);
@@ -614,9 +629,15 @@ function getWallsWithHoles(shape) {
             for (let floorI = 0; floorI < floorCount; floorI++) {
                 let p = windowPoints[i];
                 const angle = p[2];
-                if (i % doorMod == 0 && floorI == 0) {
+                if (placedWindows % doorMod == 0 && floorI == 0) {
                     // Doors
-            
+                    const shape = new THREE.Shape();
+                    shape.moveTo(p.x - doorWidth/2, floorI * floorHeight + doorElevation + doorHeight/2 - doorHeight/2);
+                    shape.lineTo(p.x - doorWidth/2, floorI * floorHeight + doorElevation + doorHeight/2 + doorHeight/2);
+                    shape.lineTo(p.x + doorWidth/2, floorI * floorHeight + doorElevation + doorHeight/2 + doorHeight/2);
+                    shape.lineTo(p.x + doorWidth/2, floorI * floorHeight + doorElevation + doorHeight/2 - doorHeight/2);
+                    shape.closePath();
+                    cutoutShapes.push(shape);
                 } else {
                     // Windows
                     const shape = new THREE.Shape();
@@ -626,6 +647,9 @@ function getWallsWithHoles(shape) {
                     shape.lineTo(p.x + windowWidth/2, floorI * floorHeight + windowElevation + windowHeight/2 - windowHeight/2);
                     shape.closePath();
                     cutoutShapes.push(shape);
+                }
+                if (floorI == 0) {
+                    placedWindows += 1;
                 }
             }
         }
