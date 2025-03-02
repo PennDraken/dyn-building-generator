@@ -21,6 +21,14 @@ const windowColor    = 0xffffff;
 const skyColor       = 0x66ccff;
 
 // Load models
+const windowWidth = 0.6 * 1.5;
+const windowHeight = 0.83 * 1.5;
+const windowElevation = 0.7;
+const doorWidth = 1.7;
+const doorHeight = 2.1;
+const doorElevation = 0;
+const doorMod = 10; // Place door every 10 windows (bottom floor)
+
 let windowModel = null;
 let doorModel   = null;
 const loader = new GLTFLoader();
@@ -62,6 +70,7 @@ const planeGeometry = new THREE.PlaneGeometry(10000, 10000);
 const grassMaterial = new THREE.MeshBasicMaterial({
     color: groundColor,
     side: THREE.DoubleSide, 
+    wireframe: false
 });
 const grassPane = new THREE.Mesh(planeGeometry, grassMaterial);
 grassPane.rotation.x = - Math.PI / 2;
@@ -85,6 +94,13 @@ rightScene.add(directionalLight);
 // Ambient light
 const ambientLight = new THREE.AmbientLight(0x404040, 10); // Soft white light with moderate intensity
 rightScene.add(ambientLight);
+
+const wallMaterial = new THREE.MeshPhongMaterial({
+    color: wallColor,
+    side: THREE.DoubleSide, // Make sure both sides are visible
+    wireframe: false
+    // Stencil to hide wall where windows are placed
+});
 
 const windowMaterial = new THREE.MeshBasicMaterial({
     color: windowColor,  
@@ -338,7 +354,6 @@ function shapeToPolygon(shape) {
 function inflateShape(shape, radius) {
     // Extract the points from the shape using getSpacedPoints (returns an array of THREE.Vector2)
     const geoJsonCoords = shapeToPolygon(shape);
-    console.log(geoJsonCoords);
     // Create a GeoJSON polygon
     const geojson = turf.polygon(geoJsonCoords);
   
@@ -365,7 +380,6 @@ function inflateShape(shape, radius) {
   
     // Create a new three.js Shape from the inflated coordinates
     const newShape = new THREE.Shape(inflatedShape);
-    console.log(newShape);
 
     // Add holes
     innerShapes.forEach((innerShape) => {
@@ -429,7 +443,6 @@ function skeletonizeShape(shape, elevation, roofHeight) {
     const maxY = Math.max(...yValues);
     const currHeight = (maxY - minY);
     const roofScale = roofHeight/currHeight;
-    // console.log(currHeight);
 
     skeletonMesh.scale.z = roofScale;
     skeletonMesh.position.y = elevation;
@@ -447,7 +460,7 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
 
     // Generate roof
     const shapeGeometry = new THREE.ShapeGeometry(buildingShape);
-    const material = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide, wireframe: true });
+    const material = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide, wireframe: false });
     const roofMesh = new THREE.Mesh(shapeGeometry, material);
 
     // Compute the bounding box of the building shape to determine its height
@@ -460,16 +473,27 @@ function genRoofMesh(buildingShape, elevation, roofColor) {
     return roofMesh;
 }
 
+function getWindowPoints(polygon, windowDistance) {
+    let windowPoints = [];
+    for (let i = 0; i < polygon.length; i++) {
+        let p1 = polygon[i];
+        let p2 = polygon[(i + 1) % polygon.length]; // Wrap around for closed polygon
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);  // Calculate angle for window placement
+        const wallWidth = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+        const windowCount = Math.floor(wallWidth / windowDistance); // Number of windows that fit along the edge
+        const windowOffset = (wallWidth - windowCount * windowDistance) / 2;
+        
+        for (let j = 0; j < windowCount; j++) { // j is index of a given window
+            const offsetX = Math.cos(angle) * (j * windowDistance + windowOffset + windowDistance / 2);
+            const offsetY = Math.sin(angle) * (j * windowDistance + windowOffset + windowDistance / 2);
+            windowPoints.push([p1.x + offsetX, p1.y + offsetY, angle]);
+        }
+    }
+    return windowPoints;
+}
+
 function genWindows(polygon, backwards) { // backwards reverses the direction of windows
     // NOTE: polygon here is a list of points (does not support inner holes)
-    // Constants
-    const windowWidth = 0.6 * 1.5;
-    const windowHeight = 0.83 * 1.5;
-    const windowElevation = 0.7;
-    const doorWidth = 1.7;
-    const doorHeight = 2.1;
-    const doorElevation = 0;
-
     // Get center point of each edge
     let centerPoints = [];
     for (let i = 0; i < polygon.length; i++) {
@@ -482,25 +506,10 @@ function genWindows(polygon, backwards) { // backwards reverses the direction of
     }
 
     // Expand outwards to find all window locations
-    let windowPoints = [];
-    for (let i = 0; i < polygon.length; i++) {
-        let p1 = polygon[i];
-        let p2 = polygon[(i + 1) % polygon.length]; // Wrap around for closed polygon
-        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);  // Calculate angle for window placement
-        const wallWidth = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-        const windowCount = Math.floor(wallWidth / windowDistance); // Number of windows that fit along the edge
-        const windowOffset = (wallWidth - windowCount * windowDistance) / 2
-        // const windowOffset = 0;
-        for (let j = 0; j < windowCount; j++) { // j is index of a given window
-            const offsetX = Math.cos(angle) * (j * windowDistance + windowOffset + windowDistance/2);
-            const offsetY = Math.sin(angle) * (j * windowDistance + windowOffset + windowDistance/2);
-            windowPoints.push([p1.x + offsetX, p1.y + offsetY, angle]);
-        }
-    }
+    let windowPoints = getWindowPoints(polygon, windowDistance);
 
     // Place windows model at locations (for now a simple plane)
     let windowGroup = new THREE.Group();
-    const doorMod = 10; // Place door every 10 windows (bottom floor)
     for (let i = 0; i < windowPoints.length; i++) {
         for (let floorI = 0; floorI < floorCount; floorI++) {
             let p = windowPoints[i];
@@ -521,7 +530,7 @@ function genWindows(polygon, backwards) { // backwards reverses the direction of
                 plane.position.set(    p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, doorElevation + floorI * floorHeight + doorHeight/2);
     
                 windowGroup.add(doorClone);
-                windowGroup.add(plane);
+                // windowGroup.add(plane);
             } else {
                 // Windows
                 const windowClone = windowModel.clone(); // Clone the preloaded model
@@ -545,7 +554,7 @@ function genWindows(polygon, backwards) { // backwards reverses the direction of
                 plane.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowElevation + floorI * floorHeight + windowHeight/2);
     
                 windowGroup.add(windowClone);
-                windowGroup.add(plane);
+                // windowGroup.add(plane);
             }
         }
     }    
@@ -553,32 +562,116 @@ function genWindows(polygon, backwards) { // backwards reverses the direction of
     return windowGroup;
 }
 
+function reverseShape(innerShape) {
+    // Reverse the order of curves in the shape
+    const reversedCurves = [];
+    innerShape.curves.forEach((curve) => {
+        const reversedCurve = curve.clone();  // Clone the curve to avoid modifying the original
+        // Reverse the order of the points in the curve (start and end)
+        reversedCurve.v1 = curve.v2;
+        reversedCurve.v2 = curve.v1;
+        reversedCurves.push(reversedCurve);
+    });
+    // Replace the shape's curves with the reversed ones
+    innerShape.curves = reversedCurves;
+}
+
+function getWallsWithHoles(shape) {
+    // Returns a list of meshes
+    let wallList = [];
+    let extrudeAmount = floorHeight * floorCount;
+    for (let i = 0; i < shape.curves.length; i++) {
+        const { v1, v2 } = shape.curves[i];
+        const width = Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2);
+        const height = extrudeAmount;
+    
+        // Wallpoints
+        const wallPoints = [
+            { x: -width/2, y: 0 }, 
+            { x: -width/2, y: height }, 
+            { x: width/2, y: height }, 
+            { x: width/2, y: 0 }
+        ]
+
+        // Define wall shape
+        const singleWallShape = new THREE.Shape();
+        singleWallShape.moveTo(wallPoints[0].x, wallPoints[0].y);
+        singleWallShape.lineTo(wallPoints[1].x, wallPoints[1].y);
+        singleWallShape.lineTo(wallPoints[2].x, wallPoints[2].y);
+        singleWallShape.lineTo(wallPoints[3].x, wallPoints[3].y);
+        singleWallShape.closePath();
+    
+        // Get window positions
+        let windowPoints = [];
+        const windowCount = Math.floor(width/windowDistance);
+        for (let i = 0; i < windowCount; i++) {
+            windowPoints.push({x: windowDistance * i - width/2 + (width - windowDistance * windowCount)/2 + windowDistance/2});
+        }
+
+        // Generate inner shapes
+        let cutoutShapes = []
+        for (let i = 0; i < windowPoints.length; i++) {
+            for (let floorI = 0; floorI < floorCount; floorI++) {
+                let p = windowPoints[i];
+                const angle = p[2];
+                if (i % doorMod == 0 && floorI == 0) {
+                    // Doors
+            
+                } else {
+                    // Windows
+                    const shape = new THREE.Shape();
+                    shape.moveTo(p.x - windowWidth/2, floorI * floorHeight + windowElevation + windowHeight/2 - windowHeight/2);
+                    shape.lineTo(p.x - windowWidth/2, floorI * floorHeight + windowElevation + windowHeight/2 + windowHeight/2);
+                    shape.lineTo(p.x + windowWidth/2, floorI * floorHeight + windowElevation + windowHeight/2 + windowHeight/2);
+                    shape.lineTo(p.x + windowWidth/2, floorI * floorHeight + windowElevation + windowHeight/2 - windowHeight/2);
+                    shape.closePath();
+                    cutoutShapes.push(shape);
+                }
+            }
+        }
+
+        cutoutShapes.forEach(shape => {
+            singleWallShape.holes.push(shape)
+        });
+
+        
+        // Place generated shape at position
+        const wallGeometry = new THREE.ShapeGeometry(singleWallShape);
+        const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
+        // Move to correct position
+        const centerX = (v1.x + v2.x) / 2;
+        const centerY = (v1.y + v2.y) / 2;
+        wallMesh.position.set(centerX, centerY, 0);
+        const angle = Math.atan2(v2.y - v1.y, v2.x - v1.x);
+        wallMesh.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+        wallMesh.rotation.y = angle;
+        // console.log(wallMesh)
+        // wallMesh.up = (x: 0, y: 0, z: 1);
+        wallList.push(wallMesh);
+    }
+    return wallList;
+}
 
 // Function to update the 3D projection on the right part of the scene
 function update3DProjection() {
     let extrudeAmount = floorHeight * floorCount;
-
     if (buildingWalls) {
         rightScene.remove(buildingWalls);
     }
-
     if (previousRoofMesh) {
         rightScene.remove(previousRoofMesh);
     }
-
     if (previousInnerMeshes) {
         // Remove all previous inner meshes
         previousInnerMeshes.forEach(mesh => rightScene.remove(mesh));
     }
-
     if (previosRoofSkeleton) {
         rightScene.remove(previosRoofSkeleton);
     }
-
     if (previosWindowMeshes) {
         rightScene.remove(previosWindowMeshes);
     }
-    
+
     if (sortedPoints.length > 2) {
         // Step 1: Calculate the centroid of the polygon
         let centroidX = 0;
@@ -642,18 +735,26 @@ function update3DProjection() {
             bevelEnabled: false, // Disable beveling
         };
 
+        // ------------------------------HOLES IN WALLLS----------------------------------------------------------
+        // Create walls with window holes in them
+        let wallList = getWallsWithHoles(outerShape); // = new THREE.Group();
+        console.log("-----------");
+        console.log(outerShape);
+        console.log(innerShapes);
+        outerShape.holes.forEach((innerShape) => {
+            // reverseShape(innerShape); // TODO should not modify actual object, but make a copy!
+            wallList.push(...getWallsWithHoles(innerShape));
+        });
+        // Create group of wallList
+        let wallGroup = new THREE.Group();
+        wallList.forEach((mesh) => {
+            wallGroup.add(mesh);
+        });
+        wallGroup.rotation.x = -Math.PI / 2;
+        
+        // outerShape.holes.forEach
         // Step 7: Create the extruded geometry for the outer shape
         const extrudeGeometry = new THREE.ExtrudeGeometry(outerShape, extrudeSettings);
-
-        // Step 8: Material for the outer 3D object
-        const wallMaterial = new THREE.MeshPhongMaterial({
-            color: wallColor,
-            // side: THREE.DoubleSide, // Make sure both sides are visible
-            // Stencil to hide wall where windows are placed
-            stencilWrite: true,
-            stencilFunc: THREE.NotEqualStencilFunc,
-            stencilRef: 1,
-        });
 
         // Step 9: Create the outer mesh
         buildingWalls = new THREE.Mesh(extrudeGeometry, wallMaterial);
@@ -677,7 +778,7 @@ function update3DProjection() {
 
         // Step 11: Add the outer mesh and all inner meshes to the scene
         rightScene.add(previosWindowMeshes);
-
+        buildingWalls = wallGroup;
         rightScene.add(buildingWalls);
         // innerMeshes.forEach(mesh => rightScene.add(mesh));
         // previousRoofMesh = roofMesh;
