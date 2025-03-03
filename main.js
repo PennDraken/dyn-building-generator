@@ -12,13 +12,14 @@ SkeletonBuilder.init().catch((error) => {
 });
 
 // Colors
-const wallColor      = 0xDAC6C6;
-const bluePrintColor = 0xDAC6C6;
-const groundColor    = 0x4D6C50;
-const pointsColor    = 0xE1E1E1;
-const roofColor      = 0xcc3300;
-const windowColor    = 0xffffff;
-const skyColor       = 0x66ccff;
+const wallColor       = 0xDAC6C6;
+const bottomWallColor = 0x8f7070;
+const bluePrintColor  = 0xDAC6C6;
+const groundColor     = 0x4D6C50;
+const pointsColor     = 0xE1E1E1;
+const roofColor       = 0xcc3300;
+const windowColor     = 0xffffff;
+const skyColor        = 0x66ccff;
 
 // Load models
 const windowWidth = 0.9;
@@ -106,6 +107,13 @@ rightScene.add(ambientLight);
 
 const wallMaterial = new THREE.MeshPhongMaterial({
     color: wallColor,
+    side: THREE.DoubleSide, // Make sure both sides are visible
+    wireframe: false
+    // Stencil to hide wall where windows are placed
+});
+
+const bottomWallMaterial = new THREE.MeshPhongMaterial({
+    color: bottomWallColor,
     side: THREE.DoubleSide, // Make sure both sides are visible
     wireframe: false
     // Stencil to hide wall where windows are placed
@@ -273,7 +281,9 @@ function updatePolygon() {
         polygon = new THREE.Mesh(geometry, polygonMaterial);
         leftScene.add(polygon);
     }
-    update3DProjection();
+    if (!selectedPoint) {
+        update3DProjection();
+    }
 }
 
 let previousInnerMeshes = [];
@@ -596,37 +606,37 @@ function getWallsWithHoles(shape) {
     let extrudeAmount = floorHeight * floorCount;
     let placedWindows = 0;
     for (let i = 0; i < shape.curves.length; i++) {
-        const { v1, v2 } = shape.curves[i];
-        const width = Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2);
-        const height = extrudeAmount;
-    
-        // Wallpoints
-        const wallPoints = [
-            { x: -width/2, y: 0 }, 
-            { x: -width/2, y: height }, 
-            { x: width/2, y: height }, 
-            { x: width/2, y: 0 }
-        ]
-
-        // Define wall shape
-        const singleWallShape = new THREE.Shape();
-        singleWallShape.moveTo(wallPoints[0].x, wallPoints[0].y);
-        singleWallShape.lineTo(wallPoints[1].x, wallPoints[1].y);
-        singleWallShape.lineTo(wallPoints[2].x, wallPoints[2].y);
-        singleWallShape.lineTo(wallPoints[3].x, wallPoints[3].y);
-        singleWallShape.closePath();
-    
-        // Get window positions
-        let windowPoints = [];
-        const windowCount = Math.floor(width/windowDistance);
-        for (let i = 0; i < windowCount; i++) {
-            windowPoints.push({x: windowDistance * i - width/2 + (width - windowDistance * windowCount)/2 + windowDistance/2});
-        }
-
         // Generate inner shapes
-        let cutoutShapes = []
-        for (let i = 0; i < windowPoints.length; i++) {
-            for (let floorI = 0; floorI < floorCount; floorI++) {
+        for (let floorI = 0; floorI < floorCount; floorI++) {
+            let cutoutShapes = []
+            // Create shape for floor
+            const { v1, v2 } = shape.curves[i];
+            const width = Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2);
+        
+            // Wallpoints
+            const wallPoints = [
+                { x: -width/2, y: floorI * floorHeight }, 
+                { x: -width/2, y: floorI * floorHeight + floorHeight}, 
+                { x:  width/2, y: floorI * floorHeight + floorHeight}, 
+                { x:  width/2, y: floorI * floorHeight }
+            ]
+    
+            // Define wall shape
+            const singleWallShape = new THREE.Shape();
+            singleWallShape.moveTo(wallPoints[0].x, wallPoints[0].y);
+            singleWallShape.lineTo(wallPoints[1].x, wallPoints[1].y);
+            singleWallShape.lineTo(wallPoints[2].x, wallPoints[2].y);
+            singleWallShape.lineTo(wallPoints[3].x, wallPoints[3].y);
+            singleWallShape.closePath();
+        
+            // Get window positions
+            let windowPoints = [];
+            const windowCount = Math.floor(width/windowDistance);
+            for (let i = 0; i < windowCount; i++) {
+                windowPoints.push({x: windowDistance * i - width/2 + (width - windowDistance * windowCount)/2 + windowDistance/2});
+            }    
+
+            for (let i = 0; i < windowPoints.length; i++) {
                 let p = windowPoints[i];
                 const angle = p[2];
                 if (placedWindows % doorMod == 0 && floorI == 0) {
@@ -652,26 +662,28 @@ function getWallsWithHoles(shape) {
                     placedWindows += 1;
                 }
             }
+
+            cutoutShapes.forEach(shape => {
+                singleWallShape.holes.push(shape)
+            });
+            
+            // Place generated shape at position
+            const wallGeometry = new THREE.ShapeGeometry(singleWallShape);
+            const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
+            if (floorI == 0) {
+                wallMesh.material = bottomWallMaterial;
+            }
+            // Move to correct position
+            const centerX = (v1.x + v2.x) / 2;
+            const centerY = (v1.y + v2.y) / 2;
+            wallMesh.position.set(centerX, centerY, 0);
+            const angle = Math.atan2(v2.y - v1.y, v2.x - v1.x);
+            wallMesh.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+            wallMesh.rotation.y = angle;
+            // console.log(wallMesh)
+            // wallMesh.up = (x: 0, y: 0, z: 1);
+            wallList.push(wallMesh);
         }
-
-        cutoutShapes.forEach(shape => {
-            singleWallShape.holes.push(shape)
-        });
-
-        
-        // Place generated shape at position
-        const wallGeometry = new THREE.ShapeGeometry(singleWallShape);
-        const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
-        // Move to correct position
-        const centerX = (v1.x + v2.x) / 2;
-        const centerY = (v1.y + v2.y) / 2;
-        wallMesh.position.set(centerX, centerY, 0);
-        const angle = Math.atan2(v2.y - v1.y, v2.x - v1.x);
-        wallMesh.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-        wallMesh.rotation.y = angle;
-        // console.log(wallMesh)
-        // wallMesh.up = (x: 0, y: 0, z: 1);
-        wallList.push(wallMesh);
     }
     return wallList;
 }
@@ -930,6 +942,7 @@ function onMouseScroll3d(event) {
 
 function onMouseUp() {
     selectedPoint = null;
+    updatePolygon();
 }
 
 leftContainer.addEventListener('mousedown', onMouseDown);
