@@ -31,10 +31,11 @@ const doorElevation = 0;
 const doorMod = 10; // Place door every 10 windows (bottom floor)
 const windowEntranceWidth = 1.7;
 const windowEntranceHeight = 1.4;
-const windowEntranceElevation = 0.3;
+const windowEntranceElevation = 0.6;
 
 let windowModel = null;
 let doorModel   = null;
+let windowEntranceModel = null;
 const loader = new GLTFLoader();
 loader.load('models/window1.glb', function (gltf) {
     windowModel = gltf.scene;
@@ -48,8 +49,8 @@ loader.load('models/door1.glb', function (gltf) {
 }, undefined, function (error) {
     console.error('Error loading door model:', error);
 });
-loader.load('models/window-entranec1.glb', function (gltf) {
-    doorModel = gltf.scene;
+loader.load('models/window-entrance1.glb', function (gltf) {
+    windowEntranceModel = gltf.scene;
     console.log("Entrance window model loaded!");
 }, undefined, function (error) {
     console.error('Error loading entrance window model:', error);
@@ -555,6 +556,22 @@ function genWindows(polygon, backwards) { // backwards reverses the direction of
     
                 windowGroup.add(doorClone);
                 // windowGroup.add(plane);
+            } else if (floorI == 0) {
+                // Windows
+                const windowClone = windowEntranceModel.clone(); // Clone the preloaded model
+                const angle = p[2];
+        
+                // Wacky rotations to place window in correct direction
+                windowClone.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                let offset = 0;
+                if (backwards) {
+                    windowClone.rotation.y = angle - Math.PI;
+                } else {
+                    windowClone.rotation.y = angle;
+                }
+                windowClone.position.set(p[0] + Math.sin(angle)*offset, p[1] - Math.cos(angle)*offset, windowEntranceElevation + floorI * floorHeight + windowEntranceHeight/2);    
+                windowGroup.add(windowClone);
+                // windowGroup.add(plane);
             } else {
                 // Windows
                 const windowClone = windowModel.clone(); // Clone the preloaded model
@@ -646,6 +663,15 @@ function getWallsWithHoles(shape) {
                     shape.lineTo(p.x - doorWidth/2, floorI * floorHeight + doorElevation + doorHeight/2 + doorHeight/2);
                     shape.lineTo(p.x + doorWidth/2, floorI * floorHeight + doorElevation + doorHeight/2 + doorHeight/2);
                     shape.lineTo(p.x + doorWidth/2, floorI * floorHeight + doorElevation + doorHeight/2 - doorHeight/2);
+                    shape.closePath();
+                    cutoutShapes.push(shape);
+                } else if (floorI == 0) {
+                    // Entrance windows
+                    const shape = new THREE.Shape();
+                    shape.moveTo(p.x - windowEntranceWidth/2, floorI * floorHeight + windowEntranceElevation + windowEntranceHeight/2 - windowEntranceHeight/2);
+                    shape.lineTo(p.x - windowEntranceWidth/2, floorI * floorHeight + windowEntranceElevation + windowEntranceHeight/2 + windowEntranceHeight/2);
+                    shape.lineTo(p.x + windowEntranceWidth/2, floorI * floorHeight + windowEntranceElevation + windowEntranceHeight/2 + windowEntranceHeight/2);
+                    shape.lineTo(p.x + windowEntranceWidth/2, floorI * floorHeight + windowEntranceElevation + windowEntranceHeight/2 - windowEntranceHeight/2);
                     shape.closePath();
                     cutoutShapes.push(shape);
                 } else {
