@@ -272,6 +272,7 @@ function polySort(points) {
 
 function updatePolygon() {
     sortedPoints = polySort(points); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
+    // sortedPoints = points;
     if (polygon) {
         leftScene.remove(polygon);
     }
