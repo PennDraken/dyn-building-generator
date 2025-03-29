@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Interactive Polygon Editor</title>
+		<script type="module" crossorigin src="/assets/index-CJocRKcT.js"></script>
+		<link rel="stylesheet" crossorigin href="/assets/index-Ds7RGKs2.css">
+	</head>
+	<body>
+		<div id="content">
+			<div id="top">
+				<div id="left"></div>
+				<div id="right"></div>
+			</div>
+			<div id="ui-panel">
+				<h3>UI Controls</h3>
+				<label for="deflationFactorSlider">Deflation Factor:</label>
+				<input
+					type="range"
+					id="deflationFactorSlider"
+					min="200"
+					max="5000"
+					step="1"
+					value="800"
+				/>
+				<span id="deflationFactorValue">800</span>
+	
+				<label for="floorHeightSlider">Floor height:</label>
+				<input
+					type="range"
+					id="floorHeightSlider"
+					min="2"
+					max="3"
+					step="0.1"
+					value="2.5"
+				/>
+				<span id="floorHeightValue">2.5</span>
+	
+				<label for="floorCountSlider">Floor count:</label>
+				<input
+					type="range"
+					id="floorCountSlider"
+					min="1"
+					max="15"
+					step="1"
+					value="2"
+				/>
+				<span id="floorCountValue">1</span>
+	
+				<label for="roofHeightSlider">Roof height:</label>
+				<input
+					type="range"
+					id="roofHeightSlider"
+					min="1"
+					max="15"
+					step="1"
+					value="3"
+				/>
+				<span id="roofHeightValue">3</span>
+	
+				<label for="windowDistanceSlider">Window distance:</label>
+				<input
+					type="range"
+					id="windowDistanceSlider"
+					min="1"
+					max="6"
+					step="0.25"
+					value="3"
+				/>
+				<span id="windowDistanceValue">3</span>
+	
+			</div>
+	
+		</div>
+		
+	</body>
+</html>
