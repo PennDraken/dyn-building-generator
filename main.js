@@ -2,9 +2,10 @@
 // npx vite 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import * as turf from '@turf/turf';
+// import * as turf from '@turf/turf';
+import { polygon as turfPolygon, area as turfArea, buffer as turfBuffer} from '@turf/turf';
 import earcut from "earcut"; // Used for triangulation of skeletonisation
-import { deflate } from 'three/examples/jsm/libs/fflate.module.js';
+// import { deflate } from 'three/examples/jsm/libs/fflate.module.js';
 import {SkeletonBuilder} from 'straight-skeleton';
 SkeletonBuilder.init();
 SkeletonBuilder.init().catch((error) => {
@@ -37,19 +38,19 @@ let windowModel = null;
 let doorModel   = null;
 let windowEntranceModel = null;
 const loader = new GLTFLoader();
-loader.load('models/window1.glb', function (gltf) {
+loader.load('/models/window1.glb', function (gltf) {
     windowModel = gltf.scene;
     console.log("Window model loaded!");
 }, undefined, function (error) {
     console.error('Error loading window model:', error);
 });
-loader.load('models/door1.glb', function (gltf) {
+loader.load('/models/door1.glb', function (gltf) {
     doorModel = gltf.scene;
     console.log("Door model loaded!");
 }, undefined, function (error) {
     console.error('Error loading door model:', error);
 });
-loader.load('models/window-entrance1.glb', function (gltf) {
+loader.load('/models/window-entrance1.glb', function (gltf) {
     windowEntranceModel = gltf.scene;
     console.log("Entrance window model loaded!");
 }, undefined, function (error) {
@@ -295,14 +296,14 @@ let previosWindowMeshes = null;
 function genCourtyardShapes(points, deflationFactor) {
     // Step 1: Convert the points into a Turf.js polygon
     const coordinates = points.map(p => [p.x, p.y]);
-    const polygon = turf.polygon([[...coordinates, coordinates[0]]]);
+    const polygon = turfPolygon([[...coordinates, coordinates[0]]]);
 
     // Step 2: Use Turf.js to create a buffer around the polygon
     // Negative value for deflation (shrink the polygon)
-    const offsetPolygon = turf.buffer(polygon, -deflationFactor);
+    const offsetPolygon = turfBuffer(polygon, -deflationFactor);
 
     // Step 3: Check if the deflation factor has shrunk the polygon too much
-    if (!offsetPolygon || turf.area(offsetPolygon) <= 0) {
+    if (!offsetPolygon || turfArea(offsetPolygon) <= 0) {
         return []; // Return empty array if the deflation is too high or the polygon is invalid
     }
 
@@ -376,10 +377,10 @@ function inflateShape(shape, radius) {
     // Extract the points from the shape using getSpacedPoints (returns an array of THREE.Vector2)
     const geoJsonCoords = shapeToPolygon(shape);
     // Create a GeoJSON polygon
-    const geojson = turf.polygon(geoJsonCoords);
+    const geojson = turfPolygon(geoJsonCoords);
   
     // Buffer (inflate) the shape using Turf.js
-    const offsetPolygon = turf.buffer(geojson, radius);
+    const offsetPolygon = turfBuffer(geojson, radius);
 
     // Process the result
     const geometries = offsetPolygon.geometry.type === 'MultiPolygon' 
