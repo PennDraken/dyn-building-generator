@@ -285,7 +285,7 @@ function getWindowPoints(polygon, windowDistance) {
     return windowPoints;
 }
 
-function genWindows(polygon, backwards) { // backwards reverses the direction of windows
+function genWindows(polygon, backwards, windowModel, windowEntranceModel, doorModel) { // backwards reverses the direction of windows
     // NOTE: polygon here is a list of points (does not support inner holes)
     // Get center point of each edge
     let centerPoints = [];
@@ -374,20 +374,6 @@ function genWindows(polygon, backwards) { // backwards reverses the direction of
     }    
     // Return generated mesh
     return windowGroup;
-}
-
-function reverseShape(innerShape) {
-    // Reverse the order of curves in the shape
-    const reversedCurves = [];
-    innerShape.curves.forEach((curve) => {
-        const reversedCurve = curve.clone();  // Clone the curve to avoid modifying the original
-        // Reverse the order of the points in the curve (start and end)
-        reversedCurve.v1 = curve.v2;
-        reversedCurve.v2 = curve.v1;
-        reversedCurves.push(reversedCurve);
-    });
-    // Replace the shape's curves with the reversed ones
-    innerShape.curves = reversedCurves;
 }
 
 function getWallsWithHoles(shape) {
@@ -485,6 +471,121 @@ function getWallsWithHoles(shape) {
     return wallList;
 }
 
+function buildingToMesh(building) {
+    // Converts a building into a 3.mesh group
+    let extrudeAmount = building.floorHeight * building.floorCount;
+
+    if (building.polygon.length <= 2) {return None} // Early return
+    
+    // Calculate the centroid of the polygon
+    let centroidX = 0;
+    let centroidY = 0;
+    building.polygon.forEach((p) => {
+        centroidX += p.x;
+        centroidY += p.y;
+    });
+    centroidX /= building.polygon.length;
+    centroidY /= building.polygon.length;
+
+    // Adjust all points to center the shape at (0, 0)
+    const centeredPoints = building.polygon.map((p) => ({
+        x: p.x - centroidX,
+        y: p.y - centroidY
+    }));
+
+    // Create the outer shape (the bigger polygon) using centered points
+    const outerShape = new THREE.Shape();
+    outerShape.moveTo(centeredPoints[0].x, centeredPoints[0].y);
+    centeredPoints.forEach((p) => outerShape.lineTo(p.x, p.y));
+    outerShape.lineTo(centeredPoints[0].x, centeredPoints[0].y); // Close the loop
+
+    // Generate the inner shapes (holes)
+    const innerShapes = genCourtyardShapes(centeredPoints, building.deflationFactor);
+
+    // Generate windows
+    previosWindowMeshes = genWindows(centeredPoints, false, windowModel, windowEntranceModel, doorModel);
+    innerShapes.forEach(shape => {
+        const polygon = shapeToPolygon(shape);
+        const innerPoints = polygon[0].map((p) => ({
+            x: p[0],
+            y: p[1]
+        }));
+        const newWindows = genWindows(innerPoints, true, windowModel, windowEntranceModel, doorModel);
+        previosWindowMeshes.add(newWindows);
+    });
+    previosWindowMeshes.rotation.x = -Math.PI / 2;
+
+    // Step 5: Add each inner shape as a hole in the outer shape
+    innerShapes.forEach((innerShape) => {
+        outerShape.holes.push(innerShape);
+    });
+
+    // Create roof
+    // Construct a polygon extreduded version of our walls (to create a slightly larger roof)
+    const roofExtrusion = 50;
+    const roofOuterShape  = genCourtyardShapes(centeredPoints, -roofExtrusion)[0];
+    const roofInnerShapes = genCourtyardShapes(centeredPoints, deflationFactor + roofExtrusion);
+    // Combine into shape
+    roofInnerShapes.forEach((innerShape) => {
+        roofOuterShape.holes.push(innerShape);
+    });
+
+    previosRoofSkeleton = skeletonizeShape(roofOuterShape, extrudeAmount, roofHeight, roofColor);
+
+    // Step 6: Extrude settings for the outer shape
+    const extrudeSettings = {
+        depth: extrudeAmount, // Thickness of the extrusion
+        bevelEnabled: false, // Disable beveling
+    };
+
+    // ------------------------------HOLES IN WALLLS----------------------------------------------------------
+    // Create walls with window holes in them
+    let wallList = getWallsWithHoles(outerShape); // = new THREE.Group();
+    console.log("-----------");
+    console.log(outerShape);
+    console.log(innerShapes);
+    outerShape.holes.forEach((innerShape) => {
+        // reverseShape(innerShape); // TODO should not modify actual object, but make a copy!
+        wallList.push(...getWallsWithHoles(innerShape));
+    });
+    // Create group of wallList
+    let wallGroup = new THREE.Group();
+    wallList.forEach((mesh) => {
+        wallGroup.add(mesh);
+    });
+    wallGroup.rotation.x = -Math.PI / 2;
+    
+    // outerShape.holes.forEach
+    // Step 7: Create the extruded geometry for the outer shape
+    const extrudeGeometry = new THREE.ExtrudeGeometry(outerShape, extrudeSettings);
+
+    // Step 9: Create the outer mesh
+    buildingWalls = new THREE.Mesh(extrudeGeometry, wallMaterial);
+    buildingWalls.rotation.x = -Math.PI / 2;
+    // buildingWalls.holes.push(previosWindowMeshes);
+    // Step 10: Extrude each inner shape to 3D and store them
+    // TODO Remove this (unused)
+    const innerMeshes = [];
+    const innerMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00ff00, // Green color for the inner shapes
+        side: THREE.DoubleSide, // Make sure both sides are visible
+    });
+
+    innerShapes.forEach((innerShape) => {
+        const innerExtrudeGeometry = new THREE.ExtrudeGeometry(innerShape, extrudeSettings);
+        const innerMesh = new THREE.Mesh(innerExtrudeGeometry, innerMaterial);
+        innerMesh.rotation.x = -Math.PI / 2;
+        innerMesh.position.y = 2; // Offset the inner meshes slightly to avoid z-fighting
+        innerMeshes.push(innerMesh);
+    });
+
+    // Adding meshes to scene
+    rightScene.add(previosWindowMeshes);
+    buildingWalls = wallGroup;
+    rightScene.add(buildingWalls);
+    rightScene.add(previosRoofSkeleton);
+}
+
 // Function to update the 3D projection on the right part of the scene
 function update3DProjection() {
     let extrudeAmount = floorHeight * floorCount;
@@ -495,7 +596,6 @@ function update3DProjection() {
         rightScene.remove(previousRoofMesh);
     }
     if (previousInnerMeshes) {
-        // Remove all previous inner meshes
         previousInnerMeshes.forEach(mesh => rightScene.remove(mesh));
     }
     if (previosRoofSkeleton) {
@@ -506,7 +606,7 @@ function update3DProjection() {
     }
 
     if (sortedPoints.length > 2) {
-        // Step 1: Calculate the centroid of the polygon
+        // Calculate the centroid of the polygon
         let centroidX = 0;
         let centroidY = 0;
         sortedPoints.forEach((p) => {
@@ -516,30 +616,30 @@ function update3DProjection() {
         centroidX /= sortedPoints.length;
         centroidY /= sortedPoints.length;
     
-        // Step 2: Adjust all points to center the shape at (0, 0)
+        // Adjust all points to center the shape at (0, 0)
         const centeredPoints = sortedPoints.map((p) => ({
             x: p.x - centroidX,
             y: p.y - centroidY
         }));
     
-        // Step 3: Create the outer shape (the bigger polygon) using centered points
+        // Create the outer shape (the bigger polygon) using centered points
         const outerShape = new THREE.Shape();
         outerShape.moveTo(centeredPoints[0].x, centeredPoints[0].y);
         centeredPoints.forEach((p) => outerShape.lineTo(p.x, p.y));
         outerShape.lineTo(centeredPoints[0].x, centeredPoints[0].y); // Close the loop
     
-        // Step 4: Generate the inner shapes using the updated genInnerShapes function
+        // Generate the inner shapes using the updated genInnerShapes function
         const innerShapes = genCourtyardShapes(centeredPoints, deflationFactor);
 
         // Generate windows
-        previosWindowMeshes = genWindows(centeredPoints, false);
+        previosWindowMeshes = genWindows(centeredPoints, false, windowModel, windowEntranceModel, doorModel);
         innerShapes.forEach(shape => {
             const polygon = shapeToPolygon(shape);
             const innerPoints = polygon[0].map((p) => ({
                 x: p[0],
                 y: p[1]
             }));
-            const newWindows = genWindows(innerPoints, true);
+            const newWindows = genWindows(innerPoints, true, windowModel, windowEntranceModel, doorModel);
             previosWindowMeshes.add(newWindows);
         });
         previosWindowMeshes.rotation.x = -Math.PI / 2;
@@ -549,7 +649,6 @@ function update3DProjection() {
             outerShape.holes.push(innerShape);
         });
 
-        // const roofMesh = genRoofMesh(outerShape, extrudeAmount, roofColor);
         // Create roof
         // Construct a polygon extreduded version of our walls (to create a slightly larger roof)
         const roofExtrusion = 50;
