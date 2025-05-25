@@ -495,8 +495,8 @@ function buildingToMesh(building) {
 
     // Adjust all points to center the shape at (0, 0)
     const centeredPoints = building.polygon.map((p) => ({
-        x: p.x - centroidX,
-        y: p.y - centroidY
+        x: p.x ,//- centroidX,
+        y: p.y  //- centroidY
     }));
 
     // Create the outer shape (the bigger polygon) using centered points
