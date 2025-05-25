@@ -5,7 +5,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as turf from '@turf/turf';
 import earcut from "earcut"; // Used for triangulation of skeletonisation
 import {SkeletonBuilder} from 'straight-skeleton';
-import { ensureCounterClockwise, ensureClockwise, genCourtyardShapes,  } from '/geometry.js';
+import { 
+    shapeToPolygon, ensureCounterClockwise, ensureClockwise, 
+    polySort, genCourtyardShapes, skeletonizeShape 
+} from '/geometry.js';
 
 SkeletonBuilder.init();
 SkeletonBuilder.init().catch((error) => {
@@ -232,43 +235,11 @@ const polygonMaterial = new THREE.MeshBasicMaterial({
 
 // Function to create a point mesh
 const pointRadius = 1.2
-function createPoint(x, y) {
+function createPoint(x, y, pointRadius = 1.2) {
     const geometry = new THREE.CircleGeometry(pointRadius, 8);
     const point = new THREE.Mesh(geometry, pointMaterial);
     point.position.set(x, y, 0);
     return point;
-}
-
-function polySort(points) {
-    // Step 1: Calculate the center of mass (centroid)
-    const center = points.reduce((acc, p) => {
-        acc.x += p.x;
-        acc.y += p.y;
-        return acc;
-    }, { x: 0, y: 0 });
-    
-    center.x /= points.length;
-    center.y /= points.length;
-
-    // Step 2: Convert points to polar coordinates (angle, distance)
-    const annotatedPoints = points.map(p => {
-        const dx = p.x - center.x;
-        const dy = p.y - center.y;
-        const angle = Math.atan2(dy, dx);  // Polar angle (radians)
-        const distanceSquared = dx * dx + dy * dy;  // Squared distance
-        return { ...p, angle, distanceSquared };
-    });
-
-    // Step 3: Sort points by angle and then by distance
-    annotatedPoints.sort((a, b) => {
-        if (a.angle !== b.angle) {
-            return a.angle - b.angle;
-        }
-        return a.distanceSquared - b.distanceSquared;
-    });
-
-    // Step 4: Return the sorted points
-    return annotatedPoints.map(p => ({ x: p.x, y: p.y }));
 }
 
 function updatePolygon() {
@@ -294,150 +265,6 @@ let previousRoofMesh    = null;
 let previosRoofSkeleton = null;
 let previosWindowMeshes = null;
 
-
-
-function shapeToPolygon(shape) {
-    // Extract the outer and inner rings (holes)
-    const outerRing = shape.getPoints(); // Get the outer boundary
-    const holes = shape.holes; // Get the holes (inner rings)
-
-    // Convert the outer ring to the required format (x, y)
-    const outerPolygon = outerRing.map(point => [point.x, point.y]);
-
-    // Ensure the outer ring is counter-clockwise
-    const outerPolygonCCW = ensureCounterClockwise(outerPolygon);
-
-    // Convert the holes (inner rings) to the required format and ensure clockwise order
-    const innerPolygons = holes.map(hole => {
-        const holePoints = hole.getPoints().map(point => [point.x, point.y]);
-        return ensureClockwise(holePoints); // Ensure clockwise ordering for holes
-    });
-
-    // Return the polygon in the required format
-    return [outerPolygonCCW, ...innerPolygons];
-}
-
-function inflateShape(shape, radius) {
-    // Extract the points from the shape using getSpacedPoints (returns an array of THREE.Vector2)
-    const geoJsonCoords = shapeToPolygon(shape);
-    // Create a GeoJSON polygon
-    const geojson = turf.polygon(geoJsonCoords);
-  
-    // Buffer (inflate) the shape using Turf.js
-    const offsetPolygon = turf.buffer(geojson, radius);
-
-    // Process the result
-    const geometries = offsetPolygon.geometry.type === 'MultiPolygon' 
-        ? offsetPolygon.geometry.coordinates 
-        : [offsetPolygon.geometry.coordinates];
-
-    // Step 5: Convert each inner polygon into a THREE.Shape
-    const innerShapes = geometries.map((coords) => {
-        const innerShape = new THREE.Shape();
-        const [outerRing] = coords; // Use the first ring (outer boundary) of each polygon
-        innerShape.moveTo(outerRing[0][0], outerRing[0][1]);
-        outerRing.forEach((coord) => innerShape.lineTo(coord[0], coord[1]));
-        innerShape.lineTo(outerRing[0][0], outerRing[0][1]); // Close the loop
-        return innerShape;
-    });
-
-    // Convert the buffered GeoJSON back to three.js geometry
-    const inflatedShape = offsetPolygon.geometry.coordinates[0].map(pt => new THREE.Vector2(pt[0], pt[1]));
-  
-    // Create a new three.js Shape from the inflated coordinates
-    const newShape = new THREE.Shape(inflatedShape);
-
-    // Add holes
-    innerShapes.forEach((innerShape) => {
-        outerShape.holes.push(innerShape);
-    });
-
-    // Return the inflated shape as a THREE.Shape
-    return newShape;
-  }
-
-function skeletonizeShape(shape, elevation, roofHeight) {
-    // Inflate shape slightly to create overhang
-    const polygon = shapeToPolygon(shape);
-    
-    // Generate the skeleton mesh using the polygon
-    const result = SkeletonBuilder.buildFromPolygon(polygon);
-
-    const geometry = new THREE.BufferGeometry();
-    const vertices = [];
-    for (const polygon of result.polygons) {
-        const polygonVertices = [];
-
-        for (let i = 0; i < polygon.length; i++) {
-            const vertex = result.vertices[polygon[i]];
-            polygonVertices.push(
-                (vertex[0]),
-                (vertex[1]),
-                (vertex[2])
-            );
-        }
-
-        const triangles = earcut(polygonVertices, null, 3);
-
-        for (let i = 0; i < triangles.length / 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                const index = triangles[i * 3 + j];
-                vertices.push(polygonVertices[index * 3], polygonVertices[index * 3 + 1], polygonVertices[index * 3 + 2]);
-            }
-        }
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
-
-    // Recalculate the normals
-    geometry.computeVertexNormals();
-
-    const roofMaterial = new THREE.MeshPhongMaterial({
-        color: roofColor,
-        side: THREE.DoubleSide,
-        wireframe: false,
-        shininess: 30,   // Controls the shininess of the material
-        flatShading: false // Set to true for flat shading if desired
-    });
-
-    const skeletonMesh = new THREE.Mesh(geometry, roofMaterial);
-
-    // lets scale the roof so its a fixed height
-    // First we find the original height by finding min and max y of the vertices
-    const yValues = vertices.filter((_, index) => index % 3 === 2);
-    const minY = Math.min(...yValues);
-    const maxY = Math.max(...yValues);
-    const currHeight = (maxY - minY);
-    const roofScale = roofHeight/currHeight;
-
-    skeletonMesh.scale.z = roofScale;
-    skeletonMesh.position.y = elevation;
-    skeletonMesh.rotation.x = -Math.PI / 2;
-
-    return skeletonMesh;
-}
-
-function genRoofMesh(buildingShape, elevation, roofColor) {
-    // TODO Can probably be removed (unused)
-    // Ensure the input is a valid THREE.Shape
-    if (!(buildingShape instanceof THREE.Shape)) {
-        throw new Error("Invalid building shape: Must be an instance of THREE.Shape.");
-    }
-
-    // Generate roof
-    const shapeGeometry = new THREE.ShapeGeometry(buildingShape);
-    const material = new THREE.MeshStandardMaterial({ color: roofColor, side: THREE.DoubleSide, wireframe: false });
-    const roofMesh = new THREE.Mesh(shapeGeometry, material);
-
-    // Compute the bounding box of the building shape to determine its height
-    const boundingBox = new THREE.Box3().setFromObject(roofMesh);
-    const buildingHeight = boundingBox.max.z - boundingBox.min.z;
-
-    // Elevate the roof by the specified amount above the building height
-    roofMesh.position.y = buildingHeight + elevation;
-    roofMesh.rotation.x = -Math.PI / 2;
-    return roofMesh;
-}
 
 function getWindowPoints(polygon, windowDistance) {
     let windowPoints = [];
@@ -733,7 +560,7 @@ function update3DProjection() {
             roofOuterShape.holes.push(innerShape);
         });
 
-        previosRoofSkeleton = skeletonizeShape(roofOuterShape, extrudeAmount, roofHeight);
+        previosRoofSkeleton = skeletonizeShape(roofOuterShape, extrudeAmount, roofHeight, roofColor);
 
         // Step 6: Extrude settings for the outer shape
         const extrudeSettings = {
@@ -811,7 +638,7 @@ function onMouseDown(event) {
             const worldCoords = raycaster.ray.at(10, new THREE.Vector3());
             const newPoint = { x: worldCoords.x, y: worldCoords.y };
             points.push(newPoint);
-            const newPointMesh = createPoint(newPoint.x, newPoint.y);
+            const newPointMesh = createPoint(newPoint.x, newPoint.y, pointRadius);
             leftScene.add(newPointMesh);
             pointMeshes.push(newPointMesh);
             updatePolygon();
