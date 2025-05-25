@@ -43,8 +43,6 @@ let windowModel = await loader.loadAsync('models/window1.glb').then(gltf => gltf
 let doorModel = await loader.loadAsync('models/door1.glb').then(gltf => gltf.scene);
 let windowEntranceModel = await loader.loadAsync('models/window-entrance1.glb').then(gltf => gltf.scene);
 
-
-
 // Select containers for left and right sides
 const leftContainer = document.getElementById('left');
 const rightContainer = document.getElementById('right');
@@ -141,6 +139,9 @@ const roofHeightDisplay = document.getElementById("roofHeightValue");
 const windowDistanceSlider  = document.getElementById("windowDistanceSlider");
 const windowDistanceDisplay = document.getElementById("windowDistanceValue");
 
+const changeBuildingButton = document.getElementById("change-building-button");
+const selectedBuildingLabel = document.getElementById("selected-building-label");
+
 // Init building properties
 let floorCount      = parseFloat(floorCountSlider.value);
 let floorHeight     = parseFloat(floorHeightSlider.value);
@@ -184,6 +185,7 @@ windowDistanceSlider.addEventListener("input", () => {
     update3DProjection();
 });
 
+
 let buildings = [];
 let selectedBuilding = new Building(
   [{x:0,y:0},{x:3,y:3},{x:0,y:3},{x:0,y:0}], 
@@ -197,6 +199,51 @@ let selectedBuilding = new Building(
   windowEntranceModel
 );
 buildings.push(selectedBuilding);
+
+function setSelectedBuilding() {
+
+}
+
+changeBuildingButton.addEventListener("click", () => {
+    console.log("Changed building")
+    // Increase index of selected building
+    const i = buildings.indexOf(selectedBuilding) + 1;
+    // Check if i-1 is unitialized (go back to index 0)
+    if (buildings[i-1].polygon.length<=2) {
+        i = 0;
+        selectedBuilding = buildings[i]
+        unsortedPoints = selectedBuilding.polygon;
+        updateSelectedPolygon()
+        selectedBuildingLabel.innerHTML = i;
+    }
+
+    // Create new building if outside of range
+    else if (i > buildings.length) {
+        // Create temp building
+        let newBuilding = new Building(
+            [{x:0,y:0}], 
+            deflationFactor, 
+            floorHeight, 
+            floorCount, 
+            roofHeight, 
+            windowDistance, 
+            doorModel, 
+            windowModel, 
+            windowEntranceModel
+        );
+        buildings.push(newBuilding);
+        selectedBuilding = newBuilding
+        unsortedPoints = selectedBuilding.polygon;
+        updateSelectedPolygon()
+        selectedBuildingLabel.innerHTML = i;
+    } else {
+        selectedBuilding = buildings[i]
+        unsortedPoints = selectedBuilding.polygon;
+        updateSelectedPolygon()
+        selectedBuildingLabel.innerHTML = i;
+    }
+});
+
 
 // Adjust camera and renderer on window resize
 function onWindowResize() {
@@ -220,7 +267,6 @@ window.addEventListener('resize', onWindowResize);
 
 // Variables for interactive points and polygon
 let unsortedPoints = [];
-let sortedPoints = [];
 let pointMeshes = [];
 let polygon = null;
 let hoveredPoint = null;
@@ -247,7 +293,8 @@ function createPoint(x, y, pointRadius = 1.2) {
 }
 
 function updateSelectedPolygon() {
-    sortedPoints = polySort(unsortedPoints); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
+    let sortedPoints = polySort(unsortedPoints); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
+    selectedBuilding.polygon = sortedPoints;
     // sortedPoints = points;
     if (polygon) {
         leftScene.remove(polygon);
@@ -597,7 +644,6 @@ function update3DProjection() {
         }
     }
     console.log("Adding building now");
-    selectedBuilding.polygon = sortedPoints;
     console.log(selectedBuilding)
     const mesh = buildingToMesh(selectedBuilding);
     mesh.name = 'building';
@@ -632,6 +678,7 @@ function onMouseDown(event) {
             updateSelectedPolygon();
         }
     } else if (button === 2) {
+        // Delete point
         if (intersects.length > 0) {
             const index = pointMeshes.indexOf(intersects[0].object);
             if (index > -1) {
