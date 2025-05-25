@@ -1,5 +1,5 @@
 // Class that stores building info
-class Building {
+export class Building {
     constructor(polygon, deflationAmount, floorHeight, floorCount, roofHeight, windowDistance, doorModel, windowModel, bottomFloorWindowModel) {
         this.polygon = polygon; // The polygon representing the building's footprint
         this.deflationAmount = deflationAmount; // Amount to deflate the polygon

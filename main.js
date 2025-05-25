@@ -9,6 +9,7 @@ import {
     shapeToPolygon, ensureCounterClockwise, ensureClockwise, 
     polySort, genCourtyardShapes, skeletonizeShape 
 } from '/geometry.js';
+import {Building} from '/building.js';
 
 SkeletonBuilder.init();
 SkeletonBuilder.init().catch((error) => {
@@ -37,28 +38,12 @@ const windowEntranceWidth = 1.7;
 const windowEntranceHeight = 1.4;
 const windowEntranceElevation = 0.6;
 
-let windowModel = null;
-let doorModel   = null;
-let windowEntranceModel = null;
 const loader = new GLTFLoader();
-loader.load('models/window1.glb', function (gltf) {
-    windowModel = gltf.scene;
-    console.log("Window model loaded!");
-}, undefined, function (error) {
-    console.error('Error loading window model:', error);
-});
-loader.load('models/door1.glb', function (gltf) {
-    doorModel = gltf.scene;
-    console.log("Door model loaded!");
-}, undefined, function (error) {
-    console.error('Error loading door model:', error);
-});
-loader.load('models/window-entrance1.glb', function (gltf) {
-    windowEntranceModel = gltf.scene;
-    console.log("Entrance window model loaded!");
-}, undefined, function (error) {
-    console.error('Error loading entrance window model:', error);
-});
+let windowModel = await loader.loadAsync('models/window1.glb').then(gltf => gltf.scene);
+let doorModel = await loader.loadAsync('models/door1.glb').then(gltf => gltf.scene);
+let windowEntranceModel = await loader.loadAsync('models/window-entrance1.glb').then(gltf => gltf.scene);
+
+
 
 // Select containers for left and right sides
 const leftContainer = document.getElementById('left');
@@ -166,33 +151,54 @@ let windowDistance  = 3; //parseFloat(windowDistanceDisplay.value); This does no
 // Add an event listener to the slider to update the value
 deflationFactorSlider.addEventListener("input", () => {
     deflationFactor = parseFloat(deflationFactorSlider.value);
+    selectedBuilding.deflationAmount = deflationFactor;
     deflationFactorDisplay.textContent = deflationFactor.toFixed(2);
     update3DProjection();
 });
 
 floorHeightSlider.addEventListener("input", () => {
     floorHeight = parseFloat(floorHeightSlider.value);
+    selectedBuilding.floorHeight = floorHeight;
     floorHeightDisplay.textContent = floorHeight.toFixed(2);
     update3DProjection();
 });
 
 floorCountSlider.addEventListener("input", () => {
     floorCount = parseFloat(floorCountSlider.value);
+    selectedBuilding.floorCount = floorCount;
     floorCountDisplay.textContent = floorCount.toFixed(2);
     update3DProjection();
 });
 
 roofHeightSlider.addEventListener("input", () => {
     roofHeight = parseFloat(roofHeightSlider.value);
+    selectedBuilding.roofHeight = roofHeight;
     roofHeightDisplay.textContent = roofHeight.toFixed(2);
     update3DProjection();
 });
 
 windowDistanceSlider.addEventListener("input", () => {
     windowDistance = parseFloat(windowDistanceSlider.value);
+    selectedBuilding.windowDistance = windowDistance;
     windowDistanceDisplay.textContent = windowDistance.toFixed(2);
     update3DProjection();
 });
+
+let buildings = [];
+let selectedBuilding = new Building(
+  [{x:0,y:0},{x:3,y:3},{x:0,y:3},{x:0,y:0}], 
+  deflationFactor, 
+  floorHeight, 
+  floorCount, 
+  roofHeight, 
+  windowDistance, 
+  doorModel, 
+  windowModel, 
+  windowEntranceModel
+);
+buildings.push(selectedBuilding);
+
+
 
 // Adjust camera and renderer on window resize
 function onWindowResize() {
@@ -475,7 +481,7 @@ function buildingToMesh(building) {
     // Converts a building into a 3.mesh group
     let extrudeAmount = building.floorHeight * building.floorCount;
 
-    if (building.polygon.length <= 2) {return None} // Early return
+    if (building.polygon.length <= 2) {return None} // Early return for invalid shapes
     
     // Calculate the centroid of the polygon
     let centroidX = 0;
@@ -500,7 +506,7 @@ function buildingToMesh(building) {
     outerShape.lineTo(centeredPoints[0].x, centeredPoints[0].y); // Close the loop
 
     // Generate the inner shapes (holes)
-    const innerShapes = genCourtyardShapes(centeredPoints, building.deflationFactor);
+    const innerShapes = genCourtyardShapes(centeredPoints, building.deflationAmount);
 
     // Generate windows
     previosWindowMeshes = genWindows(centeredPoints, false, windowModel, windowEntranceModel, doorModel);
@@ -515,7 +521,7 @@ function buildingToMesh(building) {
     });
     previosWindowMeshes.rotation.x = -Math.PI / 2;
 
-    // Step 5: Add each inner shape as a hole in the outer shape
+    // Add each inner shape as a hole in the outer shape
     innerShapes.forEach((innerShape) => {
         outerShape.holes.push(innerShape);
     });
@@ -532,7 +538,7 @@ function buildingToMesh(building) {
 
     previosRoofSkeleton = skeletonizeShape(roofOuterShape, extrudeAmount, roofHeight, roofColor);
 
-    // Step 6: Extrude settings for the outer shape
+    // Step 6: Extrude settings for the outer shape (how tall the walls should be)
     const extrudeSettings = {
         depth: extrudeAmount, // Thickness of the extrusion
         bevelEnabled: false, // Disable beveling
@@ -541,9 +547,6 @@ function buildingToMesh(building) {
     // ------------------------------HOLES IN WALLLS----------------------------------------------------------
     // Create walls with window holes in them
     let wallList = getWallsWithHoles(outerShape); // = new THREE.Group();
-    console.log("-----------");
-    console.log(outerShape);
-    console.log(innerShapes);
     outerShape.holes.forEach((innerShape) => {
         // reverseShape(innerShape); // TODO should not modify actual object, but make a copy!
         wallList.push(...getWallsWithHoles(innerShape));
@@ -580,140 +583,34 @@ function buildingToMesh(building) {
     });
 
     // Adding meshes to scene
-    rightScene.add(previosWindowMeshes);
     buildingWalls = wallGroup;
-    rightScene.add(buildingWalls);
-    rightScene.add(previosRoofSkeleton);
+    let buildingGroup = new THREE.Group();
+    buildingGroup.add(previosWindowMeshes)
+    buildingGroup.add(buildingWalls)
+    buildingGroup.add(previosRoofSkeleton)
+    console.log("Here!")
+    return buildingGroup
 }
 
 // Function to update the 3D projection on the right part of the scene
 function update3DProjection() {
-    let extrudeAmount = floorHeight * floorCount;
-    if (buildingWalls) {
-        rightScene.remove(buildingWalls);
+    const oldMesh = rightScene.getObjectByName('building');
+    if (oldMesh) {
+        rightScene.remove(oldMesh);
+        oldMesh.geometry?.dispose();
+        if (Array.isArray(oldMesh.material)) {
+            oldMesh.material.forEach(m => m.dispose());
+        } else {
+            oldMesh.material?.dispose();
+        }
     }
-    if (previousRoofMesh) {
-        rightScene.remove(previousRoofMesh);
-    }
-    if (previousInnerMeshes) {
-        previousInnerMeshes.forEach(mesh => rightScene.remove(mesh));
-    }
-    if (previosRoofSkeleton) {
-        rightScene.remove(previosRoofSkeleton);
-    }
-    if (previosWindowMeshes) {
-        rightScene.remove(previosWindowMeshes);
-    }
-
-    if (sortedPoints.length > 2) {
-        // Calculate the centroid of the polygon
-        let centroidX = 0;
-        let centroidY = 0;
-        sortedPoints.forEach((p) => {
-            centroidX += p.x;
-            centroidY += p.y;
-        });
-        centroidX /= sortedPoints.length;
-        centroidY /= sortedPoints.length;
-    
-        // Adjust all points to center the shape at (0, 0)
-        const centeredPoints = sortedPoints.map((p) => ({
-            x: p.x - centroidX,
-            y: p.y - centroidY
-        }));
-    
-        // Create the outer shape (the bigger polygon) using centered points
-        const outerShape = new THREE.Shape();
-        outerShape.moveTo(centeredPoints[0].x, centeredPoints[0].y);
-        centeredPoints.forEach((p) => outerShape.lineTo(p.x, p.y));
-        outerShape.lineTo(centeredPoints[0].x, centeredPoints[0].y); // Close the loop
-    
-        // Generate the inner shapes using the updated genInnerShapes function
-        const innerShapes = genCourtyardShapes(centeredPoints, deflationFactor);
-
-        // Generate windows
-        previosWindowMeshes = genWindows(centeredPoints, false, windowModel, windowEntranceModel, doorModel);
-        innerShapes.forEach(shape => {
-            const polygon = shapeToPolygon(shape);
-            const innerPoints = polygon[0].map((p) => ({
-                x: p[0],
-                y: p[1]
-            }));
-            const newWindows = genWindows(innerPoints, true, windowModel, windowEntranceModel, doorModel);
-            previosWindowMeshes.add(newWindows);
-        });
-        previosWindowMeshes.rotation.x = -Math.PI / 2;
-
-        // Step 5: Add each inner shape as a hole in the outer shape
-        innerShapes.forEach((innerShape) => {
-            outerShape.holes.push(innerShape);
-        });
-
-        // Create roof
-        // Construct a polygon extreduded version of our walls (to create a slightly larger roof)
-        const roofExtrusion = 50;
-        const roofOuterShape  = genCourtyardShapes(centeredPoints, -roofExtrusion)[0];
-        const roofInnerShapes = genCourtyardShapes(centeredPoints, deflationFactor + roofExtrusion);
-        // Combine into shape
-        roofInnerShapes.forEach((innerShape) => {
-            roofOuterShape.holes.push(innerShape);
-        });
-
-        previosRoofSkeleton = skeletonizeShape(roofOuterShape, extrudeAmount, roofHeight, roofColor);
-
-        // Step 6: Extrude settings for the outer shape
-        const extrudeSettings = {
-            depth: extrudeAmount, // Thickness of the extrusion
-            bevelEnabled: false, // Disable beveling
-        };
-
-        // ------------------------------HOLES IN WALLLS----------------------------------------------------------
-        // Create walls with window holes in them
-        let wallList = getWallsWithHoles(outerShape); // = new THREE.Group();
-        console.log("-----------");
-        console.log(outerShape);
-        console.log(innerShapes);
-        outerShape.holes.forEach((innerShape) => {
-            // reverseShape(innerShape); // TODO should not modify actual object, but make a copy!
-            wallList.push(...getWallsWithHoles(innerShape));
-        });
-        // Create group of wallList
-        let wallGroup = new THREE.Group();
-        wallList.forEach((mesh) => {
-            wallGroup.add(mesh);
-        });
-        wallGroup.rotation.x = -Math.PI / 2;
-        
-        // outerShape.holes.forEach
-        // Step 7: Create the extruded geometry for the outer shape
-        const extrudeGeometry = new THREE.ExtrudeGeometry(outerShape, extrudeSettings);
-
-        // Step 9: Create the outer mesh
-        buildingWalls = new THREE.Mesh(extrudeGeometry, wallMaterial);
-        buildingWalls.rotation.x = -Math.PI / 2;
-        // buildingWalls.holes.push(previosWindowMeshes);
-        // Step 10: Extrude each inner shape to 3D and store them
-        // TODO Remove this (unused)
-        const innerMeshes = [];
-        const innerMaterial = new THREE.MeshPhongMaterial({
-            color: 0x00ff00, // Green color for the inner shapes
-            side: THREE.DoubleSide, // Make sure both sides are visible
-        });
-
-        innerShapes.forEach((innerShape) => {
-            const innerExtrudeGeometry = new THREE.ExtrudeGeometry(innerShape, extrudeSettings);
-            const innerMesh = new THREE.Mesh(innerExtrudeGeometry, innerMaterial);
-            innerMesh.rotation.x = -Math.PI / 2;
-            innerMesh.position.y = 2; // Offset the inner meshes slightly to avoid z-fighting
-            innerMeshes.push(innerMesh);
-        });
-
-        // Adding meshes to scene
-        rightScene.add(previosWindowMeshes);
-        buildingWalls = wallGroup;
-        rightScene.add(buildingWalls);
-        rightScene.add(previosRoofSkeleton);
-    }
+    console.log("Adding building now");
+    selectedBuilding.polygon = sortedPoints;
+    console.log(selectedBuilding)
+    const mesh = buildingToMesh(selectedBuilding);
+    mesh.name = 'building';
+    rightScene.add(mesh);
+    console.log("Here!");
 }
 
 // Mouse event handlers for left scene
