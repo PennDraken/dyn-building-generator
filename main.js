@@ -4,8 +4,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as turf from '@turf/turf';
 import earcut from "earcut"; // Used for triangulation of skeletonisation
-import { deflate } from 'three/examples/jsm/libs/fflate.module.js';
 import {SkeletonBuilder} from 'straight-skeleton';
+import { ensureCounterClockwise, ensureClockwise, genCourtyardShapes,  } from '/geometry.js';
+
 SkeletonBuilder.init();
 SkeletonBuilder.init().catch((error) => {
     console.error("Failed to initialize SkeletonBuilder:", error);
@@ -292,64 +293,8 @@ let previousInnerMeshes = [];
 let previousRoofMesh    = null;
 let previosRoofSkeleton = null;
 let previosWindowMeshes = null;
-function genCourtyardShapes(points, deflationFactor) {
-    // Step 1: Convert the points into a Turf.js polygon
-    const coordinates = points.map(p => [p.x, p.y]);
-    const polygon = turf.polygon([[...coordinates, coordinates[0]]]);
-
-    // Step 2: Use Turf.js to create a buffer around the polygon
-    // Negative value for deflation (shrink the polygon)
-    const offsetPolygon = turf.buffer(polygon, -deflationFactor);
-
-    // Step 3: Check if the deflation factor has shrunk the polygon too much
-    if (!offsetPolygon || turf.area(offsetPolygon) <= 0) {
-        return []; // Return empty array if the deflation is too high or the polygon is invalid
-    }
-
-    // Step 4: Handle multiple inner shapes (MultiPolygon)
-    const geometries = offsetPolygon.geometry.type === 'MultiPolygon' 
-        ? offsetPolygon.geometry.coordinates 
-        : [offsetPolygon.geometry.coordinates];
-
-    // Step 5: Convert each inner polygon into a THREE.Shape
-    const innerShapes = geometries.map((coords) => {
-        const innerShape = new THREE.Shape();
-        const [outerRing] = coords; // Use the first ring (outer boundary) of each polygon
-        innerShape.moveTo(outerRing[0][0], outerRing[0][1]);
-        outerRing.forEach((coord) => innerShape.lineTo(coord[0], coord[1]));
-        innerShape.lineTo(outerRing[0][0], outerRing[0][1]); // Close the loop
-        return innerShape;
-    });
-
-    return innerShapes; // Return an array of inner shapes
-}
 
 
-function ensureCounterClockwise(points) {
-    const area = points.reduce((sum, point, i) => {
-        const nextPoint = points[(i + 1) % points.length];
-        return sum + (nextPoint[0] - point[0]) * (nextPoint[1] + point[1]);
-    }, 0);
-
-    // If area is negative, the points are clockwise; if positive, they're counter-clockwise
-    if (area > 0) {
-        return points.reverse(); // Reverse points to make them counter-clockwise
-    }
-    return points;
-}
-
-function ensureClockwise(points) {
-    const area = points.reduce((sum, point, i) => {
-        const nextPoint = points[(i + 1) % points.length];
-        return sum + (nextPoint[0] - point[0]) * (nextPoint[1] + point[1]);
-    }, 0);
-
-    // If area is negative, the points are clockwise; if positive, they're counter-clockwise
-    if (area < 0) {
-        return points.reverse(); // Reverse points to make them counter-clockwise
-    }
-    return points;
-}
 
 function shapeToPolygon(shape) {
     // Extract the outer and inner rings (holes)
@@ -707,8 +652,6 @@ function getWallsWithHoles(shape) {
             const angle = Math.atan2(v2.y - v1.y, v2.x - v1.x);
             wallMesh.setRotationFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
             wallMesh.rotation.y = angle;
-            // console.log(wallMesh)
-            // wallMesh.up = (x: 0, y: 0, z: 1);
             wallList.push(wallMesh);
         }
     }
@@ -839,16 +782,11 @@ function update3DProjection() {
             innerMeshes.push(innerMesh);
         });
 
-        // Step 11: Add the outer mesh and all inner meshes to the scene
+        // Adding meshes to scene
         rightScene.add(previosWindowMeshes);
         buildingWalls = wallGroup;
         rightScene.add(buildingWalls);
-        // innerMeshes.forEach(mesh => rightScene.add(mesh));
-        // previousRoofMesh = roofMesh;
-        // rightScene.add(roofMesh);
         rightScene.add(previosRoofSkeleton);
-        // Step 12: Store the inner meshes for removal in the next update
-        // previousInnerMeshes = innerMeshes;
     }
 }
 
