@@ -198,8 +198,6 @@ let selectedBuilding = new Building(
 );
 buildings.push(selectedBuilding);
 
-
-
 // Adjust camera and renderer on window resize
 function onWindowResize() {
     const leftAspect = leftContainer.offsetWidth / leftContainer.offsetHeight;
@@ -221,7 +219,7 @@ onWindowResize();
 window.addEventListener('resize', onWindowResize);
 
 // Variables for interactive points and polygon
-let points = [];
+let unsortedPoints = [];
 let sortedPoints = [];
 let pointMeshes = [];
 let polygon = null;
@@ -248,13 +246,13 @@ function createPoint(x, y, pointRadius = 1.2) {
     return point;
 }
 
-function updatePolygon() {
-    sortedPoints = polySort(points); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
+function updateSelectedPolygon() {
+    sortedPoints = polySort(unsortedPoints); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
     // sortedPoints = points;
     if (polygon) {
         leftScene.remove(polygon);
     }
-    if (points.length > 2) {
+    if (unsortedPoints.length > 2) {
         // Create the shape from the sorted points
         const shape = new THREE.Shape(sortedPoints.map(p => new THREE.Vector2(p.x, p.y)));
         const geometry = new THREE.ShapeGeometry(shape);
@@ -265,12 +263,6 @@ function updatePolygon() {
         update3DProjection();
     }
 }
-
-let previousInnerMeshes = [];
-let previousRoofMesh    = null;
-let previosRoofSkeleton = null;
-let previosWindowMeshes = null;
-
 
 function getWindowPoints(polygon, windowDistance) {
     let windowPoints = [];
@@ -509,7 +501,7 @@ function buildingToMesh(building) {
     const innerShapes = genCourtyardShapes(centeredPoints, building.deflationAmount);
 
     // Generate windows
-    previosWindowMeshes = genWindows(centeredPoints, false, windowModel, windowEntranceModel, doorModel);
+    let previosWindowMeshes = genWindows(centeredPoints, false, windowModel, windowEntranceModel, doorModel);
     innerShapes.forEach(shape => {
         const polygon = shapeToPolygon(shape);
         const innerPoints = polygon[0].map((p) => ({
@@ -536,7 +528,7 @@ function buildingToMesh(building) {
         roofOuterShape.holes.push(innerShape);
     });
 
-    previosRoofSkeleton = skeletonizeShape(roofOuterShape, extrudeAmount, roofHeight, roofColor);
+    const previosRoofSkeleton = skeletonizeShape(roofOuterShape, extrudeAmount, roofHeight, roofColor);
 
     // Step 6: Extrude settings for the outer shape (how tall the walls should be)
     const extrudeSettings = {
@@ -633,11 +625,11 @@ function onMouseDown(event) {
         } else {
             const worldCoords = raycaster.ray.at(10, new THREE.Vector3());
             const newPoint = { x: worldCoords.x, y: worldCoords.y };
-            points.push(newPoint);
+            unsortedPoints.push(newPoint);
             const newPointMesh = createPoint(newPoint.x, newPoint.y, pointRadius);
             leftScene.add(newPointMesh);
             pointMeshes.push(newPointMesh);
-            updatePolygon();
+            updateSelectedPolygon();
         }
     } else if (button === 2) {
         if (intersects.length > 0) {
@@ -645,8 +637,8 @@ function onMouseDown(event) {
             if (index > -1) {
                 leftScene.remove(pointMeshes[index]);
                 pointMeshes.splice(index, 1);
-                points.splice(index, 1);
-                updatePolygon();
+                unsortedPoints.splice(index, 1);
+                updateSelectedPolygon();
             }
         }
     }
@@ -688,9 +680,9 @@ function onMouseMove(event) {
         selectedPoint.position.set(worldCoords.x, worldCoords.y, 0);
         const index = pointMeshes.indexOf(selectedPoint);
         if (index > -1) {
-            points[index].x = worldCoords.x;
-            points[index].y = worldCoords.y;
-            updatePolygon();
+            unsortedPoints[index].x = worldCoords.x;
+            unsortedPoints[index].y = worldCoords.y;
+            updateSelectedPolygon();
         }
     }
 }
@@ -730,7 +722,7 @@ function onMouseScroll3d(event) {
 
 function onMouseUp() {
     selectedPoint = null;
-    updatePolygon();
+    updateSelectedPolygon();
 }
 
 leftContainer.addEventListener('mousedown', onMouseDown);
