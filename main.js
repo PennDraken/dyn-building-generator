@@ -188,7 +188,7 @@ windowDistanceSlider.addEventListener("input", () => {
 
 let buildings = [];
 let selectedBuilding = new Building(
-  [{x:0,y:0},{x:3,y:3},{x:0,y:3},{x:0,y:0}], 
+  [], 
   deflationFactor, 
   floorHeight, 
   floorCount, 
@@ -212,7 +212,6 @@ changeBuildingButton.addEventListener("click", () => {
     if (buildings[i-1].polygon.length<=2) {
         i = 0;
         selectedBuilding = buildings[i]
-        unsortedPoints = selectedBuilding.polygon;
         updateSelectedPolygon()
         selectedBuildingLabel.innerHTML = i;
     }
@@ -233,12 +232,10 @@ changeBuildingButton.addEventListener("click", () => {
         );
         buildings.push(newBuilding);
         selectedBuilding = newBuilding
-        unsortedPoints = selectedBuilding.polygon;
         updateSelectedPolygon()
         selectedBuildingLabel.innerHTML = i;
     } else {
         selectedBuilding = buildings[i]
-        unsortedPoints = selectedBuilding.polygon;
         updateSelectedPolygon()
         selectedBuildingLabel.innerHTML = i;
     }
@@ -266,9 +263,8 @@ onWindowResize();
 window.addEventListener('resize', onWindowResize);
 
 // Variables for interactive points and polygon
-let unsortedPoints = [];
 let pointMeshes = [];
-let polygon = null;
+let left2DMeshPolygon = null;
 let hoveredPoint = null;
 
 // Right-side 3D polygon
@@ -293,18 +289,19 @@ function createPoint(x, y, pointRadius = 1.2) {
 }
 
 function updateSelectedPolygon() {
+    let unsortedPoints = selectedBuilding.polygon;
     let sortedPoints = polySort(unsortedPoints); // Sort the points in counter-clockwise order (ie creates a non-intersecting polygon)
     selectedBuilding.polygon = sortedPoints;
     // sortedPoints = points;
-    if (polygon) {
-        leftScene.remove(polygon);
+    if (left2DMeshPolygon) {
+        leftScene.remove(left2DMeshPolygon);
     }
-    if (unsortedPoints.length > 2) {
+    if (selectedBuilding.polygon.length > 2) {
         // Create the shape from the sorted points
-        const shape = new THREE.Shape(sortedPoints.map(p => new THREE.Vector2(p.x, p.y)));
+        const shape = new THREE.Shape(selectedBuilding.polygon.map(p => new THREE.Vector2(p.x, p.y)));
         const geometry = new THREE.ShapeGeometry(shape);
-        polygon = new THREE.Mesh(geometry, polygonMaterial);
-        leftScene.add(polygon);
+        left2DMeshPolygon = new THREE.Mesh(geometry, polygonMaterial);
+        leftScene.add(left2DMeshPolygon);
     }
     if (!selectedPoint) {
         update3DProjection();
@@ -671,7 +668,7 @@ function onMouseDown(event) {
         } else {
             const worldCoords = raycaster.ray.at(10, new THREE.Vector3());
             const newPoint = { x: worldCoords.x, y: worldCoords.y };
-            unsortedPoints.push(newPoint);
+            selectedBuilding.polygon.push(newPoint);
             const newPointMesh = createPoint(newPoint.x, newPoint.y, pointRadius);
             leftScene.add(newPointMesh);
             pointMeshes.push(newPointMesh);
@@ -684,7 +681,7 @@ function onMouseDown(event) {
             if (index > -1) {
                 leftScene.remove(pointMeshes[index]);
                 pointMeshes.splice(index, 1);
-                unsortedPoints.splice(index, 1);
+                selectedBuilding.polygon.splice(index, 1);
                 updateSelectedPolygon();
             }
         }
@@ -707,11 +704,14 @@ function onMouseMove(event) {
     raycaster.setFromCamera(mouse, leftCamera);
     const intersects = raycaster.intersectObjects(pointMeshes);
 
+    // No point under cursor
     if (intersects.length === 0) {
         if (hoveredPoint) {
             resetPointSizes();
             hoveredPoint = null;
         }
+
+    // Point under cursor (hover)
     } else {
         const intersectedPoint = intersects[0].object;
         if (hoveredPoint !== intersectedPoint) {
@@ -722,13 +722,14 @@ function onMouseMove(event) {
         }
     }
 
+    // Move selected point
     if (selectedPoint) {
         const worldCoords = raycaster.ray.at(10, new THREE.Vector3());
         selectedPoint.position.set(worldCoords.x, worldCoords.y, 0);
         const index = pointMeshes.indexOf(selectedPoint);
         if (index > -1) {
-            unsortedPoints[index].x = worldCoords.x;
-            unsortedPoints[index].y = worldCoords.y;
+            selectedBuilding.polygon[index].x = worldCoords.x;
+            selectedBuilding.polygon[index].y = worldCoords.y;
             updateSelectedPolygon();
         }
     }
